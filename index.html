@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日工时记录器（含加班+日期选择）</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: '微软雅黑', 'Microsoft YaHei', Arial, sans-serif; }
+        body { background: #f5f7fa; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 25px; }
+        .header h1 { color: #2d3748; font-size: 24px; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); padding: 25px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #666; font-size: 14px; font-weight: 500; }
+        input, select, button { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 16px; }
+        input:focus, select:focus { outline: none; border-color: #4299e1; }
+        .btn-primary { background: #4299e1; color: white; border: none; cursor: pointer; transition: background 0.3s; font-weight: 500; }
+        .btn-primary:hover { background: #3182ce; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        .stat-item { text-align: center; padding: 15px; background: #f8fafc; border-radius: 6px; }
+        .stat-item h3 { color: #666; font-size: 14px; margin-bottom: 5px; }
+        .stat-item .value { color: #4299e1; font-size: 22px; font-weight: bold; }
+        .stat-item .overtime-value { color: #e53e3e; }
+        .history { max-height: 250px; overflow-y: auto; }
+        .history-table { width: 100%; border-collapse: collapse; }
+        .history-table th, .history-table td { padding: 10px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .history-table th { color: #666; }
+        .history-table td { color: #333; }
+        .overtime-td { color: #e53e3e; font-weight: 500; }
+        .empty { text-align: center; padding: 30px; color: #999; font-size: 14px; }
+        .option-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .option-row .form-group { flex: 1; min-width: 110px; margin-bottom: 0; }
+        .tip { color: #999; font-size: 12px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>每日工时一键记录（含加班+日期选择）</h1>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <h3>本月总工时</h3>
+                <div class="value" id="month-total">0.0 小时</div>
+            </div>
+            <div class="stat-item">
+                <h3>本月加班总时长</h3>
+                <div class="value overtime-value" id="month-overtime">0.0 小时</div>
+            </div>
+            <div class="stat-item">
+                <h3>累计工作天</h3>
+                <div class="value" id="total-days">0 天</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="option-row">
+                <div class="form-group">
+                    <label for="work-date">工作日期</label>
+                    <input type="date" id="work-date" required>
+                    <div class="tip">默认今日，可手动选择</div>
+                </div>
+                <div class="form-group">
+                    <label for="start-time">上班时间</label>
+                    <select id="start-time"></select>
+                    <div class="tip">首次选择后自动默认</div>
+                </div>
+                <div class="form-group">
+                    <label for="end-time">下班时间</label>
+                    <select id="end-time"></select>
+                    <div class="tip">首次选择后自动默认</div>
+                </div>
+                <div class="form-group">
+                    <label for="rest-time">休息时长（小时）</label>
+                    <select id="rest-time">
+                        <option value="0.0">0.0</option>
+                        <option value="0.5">0.5</option>
+                        <option value="1.0" selected>1.0</option>
+                        <option value="1.5">1.5</option>
+                        <option value="2.0">2.0</option>
+                    </select>
+                    <div class="tip">首次选择后自动默认</div>
+                </div>
+                <div class="form-group">
+                    <label for="overtime-time">加班时长（小时）</label>
+                    <select id="overtime-time">
+                        <option value="0.0" selected>0.0</option>
+                        <option value="0.5">0.5</option>
+                        <option value="1.0">1.0</option>
+                        <option value="1.5">1.5</option>
+                        <option value="2.0">2.0</option>
+                        <option value="2.5">2.5</option>
+                        <option value="3.0">3.0</option>
+                    </select>
+                    <div class="tip">首次选择后自动默认</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="work-type">工作类型</label>
+                <select id="work-type">
+                    <option value="正常工作" selected>正常工作</option>
+                    <option value="加班">加班</option>
+                    <option value="调休">调休</option>
+                    <option value="出差">出差</option>
+                </select>
+                <div class="tip">首次选择后自动默认</div>
+            </div>
+            <button class="btn-primary" id="one-click-record">一键记录工时</button>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 15px; color: #2d3748; font-size: 16px;">近期记录</h3>
+            <div class="history" id="history-container">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <<th>日期</</th>
+                            <<th>上下班时间</</th>
+                            <<th>休息/加班（小时）</</th>
+                            <<th>实际工时（小时）</</th>
+                            <<th>类型</</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body">
+                        <tr><td colspan="5" class="empty">暂无记录，点击一键记录添加</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let workData = JSON.parse(localStorage.getItem('simpleWorkData')) || {
+            records: [],
+            defaults: { startTime: '', endTime: '', restTime: '', overtimeTime: '', workType: '' }
+        };
+
+        const workDateEl = document.getElementById('work-date');
+        const startTimeEl = document.getElementById('start-time');
+        const endTimeEl = document.getElementById('end-time');
+        const restTimeEl = document.getElementById('rest-time');
+        const overtimeTimeEl = document.getElementById('overtime-time');
+        const workTypeEl = document.getElementById('work-type');
+        const oneClickBtn = document.getElementById('one-click-record');
+        const historyBodyEl = document.getElementById('history-body');
+        const monthTotalEl = document.getElementById('month-total');
+        const monthOvertimeEl = document.getElementById('month-overtime');
+        const totalDaysEl = document.getElementById('total-days');
+
+        window.onload = function() {
+            const today = new Date().toISOString().split('T')[0];
+            workDateEl.value = today;
+            generateTimeOptions(startTimeEl);
+            generateTimeOptions(endTimeEl);
+            restoreDefaultOptions();
+            updateStats();
+            updateHistory();
+        };
+
+        function generateTimeOptions(selectEl) {
+            let optionsHtml = '';
+            for (let hour = 0; hour < 24; hour++) {
+                for (let minute = 0; minute < 60; minute += 30) {
+                    const h = hour.toString().padStart(2, '0');
+                    const m = minute.toString().padStart(2, '0');
+                    optionsHtml += `<option value="${h}:${m}">${h}:${m}</option>`;
+                }
+            }
+            selectEl.innerHTML = optionsHtml;
+        }
+
+        function restoreDefaultOptions() {
+            startTimeEl.value = workData.defaults.startTime || '09:00';
+            endTimeEl.value = workData.defaults.endTime || '18:30';
+            restTimeEl.value = workData.defaults.restTime || '1.0';
+            overtimeTimeEl.value = workData.defaults.overtimeTime || '0.0';
+            workTypeEl.value = workData.defaults.workType || '正常工作';
+        }
+
+        oneClickBtn.addEventListener('click', function() {
+            const workDate = workDateEl.value;
+            const startTime = startTimeEl.value;
+            const endTime = endTimeEl.value;
+            const restTime = parseFloat(restTimeEl.value) || 0;
+            const overtimeTime = parseFloat(overtimeTimeEl.value) || 0;
+            const workType = workTypeEl.value;
+
+            if (!workDate) { alert('请选择工作日期！'); return; }
+            if (workData.records.some(r => r.date === workDate)) { alert('该日期已记录！'); return; }
+
+            if (!workData.defaults.startTime) workData.defaults.startTime = startTime;
+            if (!workData.defaults.endTime) workData.defaults.endTime = endTime;
+            if (!workData.defaults.restTime) workData.defaults.restTime = restTime.toString();
+            if (!workData.defaults.overtimeTime) workData.defaults.overtimeTime = overtimeTime.toString();
+            if (!workData.defaults.workType) workData.defaults.workType = workType;
+
+            const totalHours = parseFloat(calculateHourDiff(startTime, endTime)) || 0;
+            const coreWorkHours = Math.max(0, (totalHours - restTime).toFixed(1));
+            const actualWorkHours = (parseFloat(coreWorkHours) + overtimeTime).toFixed(1);
+
+            workData.records.unshift({
+                date: workDate, startTime, endTime,
+                restTime: restTime.toFixed(1), overtimeTime: overtimeTime.toFixed(1),
+                coreWorkHours, actualWorkHours, workType
+            });
+
+            saveData();
+            updateStats();
+            updateHistory();
+            alert(overtimeTime > 0 
+                ? `记录成功！实际工时：${actualWorkHours}小时（核心${coreWorkHours}h + 加班${overtimeTime}h）`
+                : `记录成功！实际工时：${actualWorkHours}小时`);
+        });
+
+        function calculateHourDiff(start, end) {
+            if (!start || !end) return 0;
+            const [sH, sM] = start.split(':').map(Number);
+            const [eH, eM] = end.split(':').map(Number);
+            let diffMin = (eH * 60 + eM) - (sH * 60 + sM);
+            return diffMin < 0 ? (diffMin + 24*60)/60 : diffMin/60;
+        }
+
+        function updateStats() {
+            totalDaysEl.textContent = workData.records.length + ' 天';
+            const currentMonth = new Date().toISOString().split('-').slice(0,2).join('-');
+            const monthRecords = workData.records.filter(r => r.date.startsWith(currentMonth));
+            const monthTotal = monthRecords.reduce((sum, r) => sum + (parseFloat(r.actualWorkHours) || 0), 0).toFixed(1);
+            const monthOvertime = monthRecords.reduce((sum, r) => sum + (parseFloat(r.overtimeTime) || 0), 0).toFixed(1);
+            monthTotalEl.textContent = monthTotal + ' 小时';
+            monthOvertimeEl.textContent = monthOvertime + ' 小时';
+        }
+
+        function updateHistory() {
+            if (!workData.records.length) {
+                historyBodyEl.innerHTML = '<tr><td colspan="5" class="empty">暂无记录，点击一键记录添加</td></tr>';
+                return;
+            }
+            historyBodyEl.innerHTML = '';
+            workData.records.slice(0,10).forEach(record => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${formatDate(record.date)}</td>
+                    <td>${record.startTime} - ${record.endTime}</td>
+                    <td>${record.restTime} / <span class="overtime-td">${record.overtimeTime}</span></td>
+                    <td>${record.actualWorkHours}</td>
+                    <td>${record.workType}</td>
+                `;
+                historyBodyEl.appendChild(row);
+            });
+        }
+
+        function formatDate(dateStr) { return dateStr.split('-').slice(1).join('-'); }
+        function saveData() { localStorage.setItem('simpleWorkData', JSON.stringify(workData)); }
+    </script>
+</body>
+</html>
