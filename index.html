@@ -8,7 +8,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: '微软雅黑', 'Microsoft YaHei', Arial, sans-serif; }
         body { background: #f5f7fa; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
+        .container { max-width: 900px; margin: 0 auto; } /* 增加容器最大宽度，避免挤压 */
         .header { text-align: center; margin-bottom: 25px; }
         .header h1 { color: #2d3748; font-size: 24px; }
         .card { background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); padding: 25px; margin-bottom: 20px; }
@@ -18,9 +18,23 @@
         input:focus, select:focus { outline: none; border-color: #4299e1; }
         .btn-primary { background: #4299e1; color: white; border: none; cursor: pointer; transition: background 0.3s; font-weight: 500; }
         .btn-primary:hover { background: #3182ce; }
-        .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 25px; }
-        .stat-item { text-align: center; padding: 15px; background: #f8fafc; border-radius: 6px; }
-        .stat-item h3 { color: #666; font-size: 14px; margin-bottom: 5px; }
+        /* 修复：调整网格布局和最小宽度 */
+        .stats { 
+            display: grid; 
+            grid-template-columns: repeat(4, minmax(100px, 1fr)); /* 确保每列最小宽度 */
+            gap: 15px; 
+            margin-bottom: 25px; 
+        } 
+        .stat-item { text-align: center; padding: 15px 5px; background: #f8fafc; border-radius: 6px; }
+        .stat-item h3 { 
+            color: #666; 
+            font-size: 14px; 
+            margin-bottom: 5px; 
+            white-space: nowrap; /* 修复：防止标题换行导致截断 */
+            overflow: hidden;
+            text-overflow: ellipsis; 
+            padding: 0 5px; /* 增加内边距 */
+        }
         .stat-item .value { color: #4299e1; font-size: 22px; font-weight: bold; }
         .stat-item .overtime-value { color: #e53e3e; }
         .history { max-height: 250px; overflow-y: auto; }
@@ -33,6 +47,34 @@
         .option-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .option-row .form-group { flex: 1; min-width: 110px; margin-bottom: 0; }
         .tip { color: #999; font-size: 12px; margin-top: 5px; }
+        /* 统计筛选样式 */
+        .stat-filter-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .stat-filter-row .form-group { flex: 1; margin-bottom: 0; }
+        .delete-btn { 
+            background: #e53e3e; 
+            color: white; 
+            border: none; 
+            padding: 5px 10px; 
+            border-radius: 4px; 
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        .delete-btn:hover { background: #c53030; }
+        /* 月份详情样式 */
+        .month-details-card { display: none; } 
+        .month-details-card h3 { display: flex; justify-content: space-between; align-items: center; font-size: 16px; color: #2d3748; }
+        .month-details-card .close-btn { 
+            font-size: 18px; 
+            cursor: pointer; 
+            color: #ccc; 
+            background: none; 
+            border: none; 
+            padding: 0;
+            transition: color 0.3s;
+        }
+        .month-details-card .close-btn:hover { color: #333; }
+        .details-table-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
     </style>
 </head>
 <body>
@@ -41,17 +83,32 @@
             <h1>每日工时一键记录（含加班+日期选择）</h1>
         </div>
 
+        <div class="stat-filter-row">
+            <div class="form-group">
+                <label for="filter-year">筛选年份</label>
+                <select id="filter-year"></select>
+            </div>
+            <div class="form-group">
+                <label for="filter-month">筛选月份</label>
+                <select id="filter-month"></select>
+            </div>
+        </div>
+
         <div class="stats">
             <div class="stat-item">
-                <h3>本月总工时</h3>
+                <h3 id="total-days-label">...总工作天数</h3>
+                <div class="value" id="month-days">0 天</div>
+            </div>
+            <div class="stat-item">
+                <h3 id="total-label">...总工时 (正常)</h3>
                 <div class="value" id="month-total">0.0 小时</div>
             </div>
             <div class="stat-item">
-                <h3>本月加班总时长</h3>
-                <div class="value overtime-value" id="month-overtime">0.0 小时</div>
+                <h3 id="overtime-exchange-label">...加班兑换天数</h3> 
+                <div class="value overtime-value" id="month-overtime-exchange">0.0 天</div>
             </div>
             <div class="stat-item">
-                <h3>累计工作天</h3>
+                <h3>所有记录天数</h3>
                 <div class="value" id="total-days">0 天</div>
             </div>
         </div>
@@ -111,21 +168,46 @@
             <button class="btn-primary" id="one-click-record">一键记录工时</button>
         </div>
 
+        <div class="card month-details-card" id="month-details-card">
+            <h3 id="month-details-title">
+                <span>月份详细记录</span>
+                <button class="close-btn" onclick="document.getElementById('month-details-card').style.display='none';">&times;</button>
+            </h3>
+            <div class="details-table-container">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>上下班时间</th>
+                            <th>休息/加班（小时）</th>
+                            <th>核心工时</th>
+                            <th>实际工时</th>
+                            <th>类型</th>
+                            <th>操作</th> 
+                        </tr>
+                    </thead>
+                    <tbody id="month-details-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card">
-            <h3 style="margin-bottom: 15px; color: #2d3748; font-size: 16px;">近期记录</h3>
+            <h3 style="margin-bottom: 15px; color: #2d3748; font-size: 16px;">近期记录（最近10条）</h3>
             <div class="history" id="history-container">
                 <table class="history-table">
                     <thead>
                         <tr>
-                            <<th>日期</</th>
-                            <<th>上下班时间</</th>
-                            <<th>休息/加班（小时）</</th>
-                            <<th>实际工时（小时）</</th>
-                            <<th>类型</</th>
+                            <th>日期</th>
+                            <th>上下班时间</th>
+                            <th>休息/加班（小时）</th>
+                            <th>实际工时（小时）</th>
+                            <th>类型</th>
+                            <th>操作</th> 
                         </tr>
                     </thead>
                     <tbody id="history-body">
-                        <tr><td colspan="5" class="empty">暂无记录，点击一键记录添加</td></tr>
+                        <tr><td colspan="6" class="empty">暂无记录，点击一键记录添加</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -138,6 +220,9 @@
             defaults: { startTime: '', endTime: '', restTime: '', overtimeTime: '', workType: '' }
         };
 
+        const STANDARD_DAY_HOURS = 9.5; 
+
+        // 元素引用
         const workDateEl = document.getElementById('work-date');
         const startTimeEl = document.getElementById('start-time');
         const endTimeEl = document.getElementById('end-time');
@@ -146,9 +231,22 @@
         const workTypeEl = document.getElementById('work-type');
         const oneClickBtn = document.getElementById('one-click-record');
         const historyBodyEl = document.getElementById('history-body');
-        const monthTotalEl = document.getElementById('month-total');
-        const monthOvertimeEl = document.getElementById('month-overtime');
+
+        const filterYearEl = document.getElementById('filter-year');
+        const filterMonthEl = document.getElementById('filter-month');
         const totalDaysEl = document.getElementById('total-days');
+        
+        const monthDaysEl = document.getElementById('month-days');
+        const monthTotalEl = document.getElementById('month-total');
+        const monthOvertimeExchangeEl = document.getElementById('month-overtime-exchange');
+        const totalLabelEl = document.getElementById('total-label');
+        const overtimeLabelEl = document.getElementById('overtime-exchange-label');
+
+        const monthDetailsCardEl = document.getElementById('month-details-card'); 
+        const monthDetailsTitleEl = document.getElementById('month-details-title');
+        const monthDetailsBodyEl = document.getElementById('month-details-body');
+
+        let currentFilteredRecords = [];
 
         window.onload = function() {
             const today = new Date().toISOString().split('T')[0];
@@ -156,8 +254,12 @@
             generateTimeOptions(startTimeEl);
             generateTimeOptions(endTimeEl);
             restoreDefaultOptions();
+            generateFilterOptions(); 
             updateStats();
             updateHistory();
+
+            filterYearEl.addEventListener('change', updateStats);
+            filterMonthEl.addEventListener('change', updateStats);
         };
 
         function generateTimeOptions(selectEl) {
@@ -191,27 +293,30 @@
             if (!workDate) { alert('请选择工作日期！'); return; }
             if (workData.records.some(r => r.date === workDate)) { alert('该日期已记录！'); return; }
 
-            if (!workData.defaults.startTime) workData.defaults.startTime = startTime;
-            if (!workData.defaults.endTime) workData.defaults.endTime = endTime;
-            if (!workData.defaults.restTime) workData.defaults.restTime = restTime.toString();
-            if (!workData.defaults.overtimeTime) workData.defaults.overtimeTime = overtimeTime.toString();
-            if (!workData.defaults.workType) workData.defaults.workType = workType;
+            workData.defaults.startTime = startTime;
+            workData.defaults.endTime = endTime;
+            workData.defaults.restTime = restTime.toString();
+            workData.defaults.overtimeTime = overtimeTime.toString();
+            workData.defaults.workType = workType;
 
-            const totalHours = parseFloat(calculateHourDiff(startTime, endTime)) || 0;
-            const coreWorkHours = Math.max(0, (totalHours - restTime).toFixed(1));
-            const actualWorkHours = (parseFloat(coreWorkHours) + overtimeTime).toFixed(1);
+            const totalHours = calculateHourDiff(startTime, endTime);
+            const coreWorkHours = Math.max(0, (totalHours - restTime));
+            const actualWorkHours = (coreWorkHours + overtimeTime).toFixed(1);
 
             workData.records.unshift({
                 date: workDate, startTime, endTime,
                 restTime: restTime.toFixed(1), overtimeTime: overtimeTime.toFixed(1),
-                coreWorkHours, actualWorkHours, workType
+                coreWorkHours: coreWorkHours.toFixed(1),
+                actualWorkHours, workType
             });
+            
+            generateFilterOptions(); 
 
             saveData();
             updateStats();
             updateHistory();
             alert(overtimeTime > 0 
-                ? `记录成功！实际工时：${actualWorkHours}小时（核心${coreWorkHours}h + 加班${overtimeTime}h）`
+                ? `记录成功！实际工时：${actualWorkHours}小时（核心${coreWorkHours.toFixed(1)}h + 加班${overtimeTime.toFixed(1)}h）`
                 : `记录成功！实际工时：${actualWorkHours}小时`);
         });
 
@@ -220,26 +325,168 @@
             const [sH, sM] = start.split(':').map(Number);
             const [eH, eM] = end.split(':').map(Number);
             let diffMin = (eH * 60 + eM) - (sH * 60 + sM);
-            return diffMin < 0 ? (diffMin + 24*60)/60 : diffMin/60;
+            return diffMin < 0 ? (diffMin + 24*60)/60 : diffMin/60; 
         }
 
-        function updateStats() {
-            totalDaysEl.textContent = workData.records.length + ' 天';
-            const currentMonth = new Date().toISOString().split('-').slice(0,2).join('-');
-            const monthRecords = workData.records.filter(r => r.date.startsWith(currentMonth));
-            const monthTotal = monthRecords.reduce((sum, r) => sum + (parseFloat(r.actualWorkHours) || 0), 0).toFixed(1);
-            const monthOvertime = monthRecords.reduce((sum, r) => sum + (parseFloat(r.overtimeTime) || 0), 0).toFixed(1);
-            monthTotalEl.textContent = monthTotal + ' 小时';
-            monthOvertimeEl.textContent = monthOvertime + ' 小时';
+        function generateFilterOptions() {
+            const years = new Set();
+            workData.records.forEach(r => years.add(r.date.substring(0, 4)));
+            
+            const sortedYears = Array.from(years).sort((a, b) => b - a);
+            
+            // 保存用户当前的选择，避免刷新后丢失
+            const currentSelectedYear = filterYearEl.value;
+            const currentSelectedMonth = filterMonthEl.value;
+
+            filterYearEl.innerHTML = '<option value="all">所有年份</option>';
+            sortedYears.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year + ' 年';
+                filterYearEl.appendChild(option);
+            });
+
+            filterMonthEl.innerHTML = '<option value="all">所有月份</option>';
+            for(let i = 1; i <= 12; i++) {
+                const month = i.toString().padStart(2, '0');
+                const option = document.createElement('option');
+                option.value = month;
+                option.textContent = i + ' 月';
+                filterMonthEl.appendChild(option);
+            }
+            
+            // 恢复/设置默认选中项
+            const currentYear = new Date().getFullYear().toString();
+            const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
+
+            if (currentSelectedYear && currentSelectedYear !== 'all') {
+                filterYearEl.value = currentSelectedYear;
+            } else if (sortedYears.includes(currentYear)) {
+                filterYearEl.value = currentYear;
+            } else if (sortedYears.length > 0) {
+                 filterYearEl.value = sortedYears[0]; // 默认选中最新一年
+            } else {
+                 filterYearEl.value = 'all';
+            }
+            
+            if (currentSelectedMonth && currentSelectedMonth !== 'all') {
+                filterMonthEl.value = currentSelectedMonth;
+            } else {
+                filterMonthEl.value = currentMonth;
+            }
         }
+
+
+        function updateStats() {
+            const selectedYear = filterYearEl.value;
+            const selectedMonth = filterMonthEl.value;
+            
+            currentFilteredRecords = workData.records.filter(r => {
+                const datePart = r.date.split('-');
+                const recordYear = datePart[0];
+                const recordMonth = datePart[1];
+                
+                const yearMatch = selectedYear === 'all' || recordYear === selectedYear;
+                const monthMatch = selectedMonth === 'all' || recordMonth === selectedMonth;
+                
+                return yearMatch && monthMatch;
+            });
+
+            // 更新标签文本
+            let timeScope = '所有记录';
+            if (selectedYear !== 'all' && selectedMonth !== 'all') {
+                timeScope = `${selectedYear}年${parseInt(selectedMonth)}月`;
+            } else if (selectedYear !== 'all') {
+                timeScope = `${selectedYear}年`;
+            } else if (selectedMonth !== 'all') {
+                timeScope = `${parseInt(selectedMonth)}月`;
+            }
+            
+            // 更新标题
+            document.getElementById('total-days-label').textContent = `${timeScope}工作天数`;
+            document.getElementById('total-label').textContent = `${timeScope}总工时 (正常)`;
+            document.getElementById('overtime-exchange-label').textContent = `${timeScope}加班兑换天数`; 
+
+            // 1. 计算筛选出的总工时 (正常部分 - coreWorkHours)
+            const normalTotal = currentFilteredRecords.reduce((sum, r) => {
+                return sum + (parseFloat(r.coreWorkHours) || 0); 
+            }, 0).toFixed(1);
+
+            // 2. 计算筛选出的加班总时长
+            const overtimeTotal = currentFilteredRecords.reduce((sum, r) => sum + (parseFloat(r.overtimeTime) || 0), 0).toFixed(1);
+            
+            // 3. 计算工作天数 (去重日期)
+            const workDays = new Set(currentFilteredRecords.map(r => r.date)).size;
+
+            // 4. 计算加班兑换天数
+            const exchangeDays = (parseFloat(overtimeTotal) / STANDARD_DAY_HOURS).toFixed(2);
+
+            // 更新显示
+            monthDaysEl.textContent = workDays + ' 天';
+            monthTotalEl.textContent = normalTotal + ' 小时';
+            monthOvertimeExchangeEl.textContent = exchangeDays + ' 天';
+            totalDaysEl.textContent = workData.records.length + ' 天';
+            
+            // 每次更新统计后，尝试显示月份详情
+            showMonthDetails(currentFilteredRecords, timeScope);
+        }
+
+        function showMonthDetails(records, title) {
+            // 只有当选择特定年份和月份时才显示详细记录
+            const selectedMonth = filterMonthEl.value;
+            const selectedYear = filterYearEl.value;
+
+            if (selectedMonth === 'all' || selectedYear === 'all') {
+                monthDetailsCardEl.style.display = 'none';
+                return;
+            }
+
+            monthDetailsCardEl.style.display = 'block';
+            monthDetailsTitleEl.querySelector('span').textContent = `${title}详细记录`;
+            
+            // 按照日期升序排序 (从旧到新)
+            const sortedRecords = records.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            if (!sortedRecords.length) {
+                monthDetailsBodyEl.innerHTML = '<tr><td colspan="7" class="empty">该月暂无记录</td></tr>';
+                return;
+            }
+
+            monthDetailsBodyEl.innerHTML = '';
+            sortedRecords.forEach(record => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${formatDate(record.date, true)}</td>
+                    <td>${record.startTime} - ${record.endTime}</td>
+                    <td>${record.restTime} / <span class="overtime-td">${record.overtimeTime}</span></td>
+                    <td>${record.coreWorkHours}</td>
+                    <td>${record.actualWorkHours}</td>
+                    <td>${record.workType}</td>
+                    <td><button class="delete-btn" onclick="deleteRecord('${record.date}')">删除</button></td>
+                `;
+                monthDetailsBodyEl.appendChild(row);
+            });
+        }
+
+        // 删除记录的函数
+        window.deleteRecord = function(date) {
+            if (confirm(`确定要删除 ${date} 的工时记录吗？`)) {
+                workData.records = workData.records.filter(r => r.date !== date);
+                saveData();
+                generateFilterOptions(); 
+                updateStats(); 
+                updateHistory();
+            }
+        }
+
 
         function updateHistory() {
             if (!workData.records.length) {
-                historyBodyEl.innerHTML = '<tr><td colspan="5" class="empty">暂无记录，点击一键记录添加</td></tr>';
+                historyBodyEl.innerHTML = '<tr><td colspan="6" class="empty">暂无记录，点击一键记录添加</td></tr>';
                 return;
             }
             historyBodyEl.innerHTML = '';
-            workData.records.slice(0,10).forEach(record => {
+            workData.records.slice(0,10).forEach(record => { 
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${formatDate(record.date)}</td>
@@ -247,12 +494,17 @@
                     <td>${record.restTime} / <span class="overtime-td">${record.overtimeTime}</span></td>
                     <td>${record.actualWorkHours}</td>
                     <td>${record.workType}</td>
+                    <td><button class="delete-btn" onclick="deleteRecord('${record.date}')">删除</button></td>
                 `;
                 historyBodyEl.appendChild(row);
             });
         }
 
-        function formatDate(dateStr) { return dateStr.split('-').slice(1).join('-'); }
+        function formatDate(dateStr, showYear = false) { 
+            const parts = dateStr.split('-');
+            return showYear ? parts.join('-') : parts.slice(1).join('-'); 
+        }
+
         function saveData() { localStorage.setItem('simpleWorkData', JSON.stringify(workData)); }
     </script>
 </body>
