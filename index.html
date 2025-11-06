@@ -271,15 +271,15 @@
 
     <script>
         // =======================================================
-        // 🚨 1. Firebase 配置 (请替换为您的项目配置!)
+        // 🚨 1. Firebase 配置 (已使用您提供的正确配置)
         // =======================================================
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            projectId: "YOUR-PROJECT-ID", // 例如: my-work-tracker-12345
-            storageBucket: "YOUR-PROJECT-ID.appspot.com",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyDHj7QaaOytBOOnvbwkGMxMhmt8HU5dSdU",
+            authDomain: "worktimer-4bc4f.firebaseapp.com",
+            projectId: "worktimer-4bc4f", 
+            storageBucket: "worktimer-4bc4f.firebasestorage.app",
+            messagingSenderId: "698553967835",
+            appId: "1:698553967835:web:3008b0b379effca58898fe"
         };
 
         // =======================================================
@@ -398,7 +398,7 @@
                     });
                     // 必须渲染 reCAPTCHA，以便 grecaptcha 对象被创建
                     window.recaptchaVerifier.render().then(widgetId => {
-                         window.recaptchaWidgetId = widgetId;
+                        window.recaptchaWidgetId = widgetId;
                     });
                 }
             }
@@ -431,11 +431,13 @@
                 })
                 .catch((error) => {
                     console.error("SMS发送失败:", error);
+                    // 错误提示现在应该更准确，例如 auth/invalid-phone-number 或 auth/too-many-requests
                     alert('发送验证码失败: ' + error.message);
                     sendCodeButton.disabled = false;
                     sendCodeButton.textContent = '发送验证码';
                     if(window.recaptchaWidgetId) {
-                         grecaptcha.reset(window.recaptchaWidgetId);
+                        // 重置 reCAPTCHA，以便用户可以再次尝试
+                        grecaptcha.reset(window.recaptchaWidgetId);
                     }
                 });
         });
@@ -478,7 +480,8 @@
          */
         async function loadAllWorkRecords() {
             try {
-                const snapshot = await getRecordsRef().orderBy('date', 'desc').get();
+                // 按照日期降序排序 (最新在前面)
+                const snapshot = await getRecordsRef().orderBy('date', 'desc').get(); 
                 allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
                 // 确保日期是字符串格式，以便后续排序和筛选
@@ -502,12 +505,14 @@
                 // 查找是否已存在该日期的记录
                 const existing = allRecords.find(r => r.date === newRecord.date);
                 
+                let docRef;
                 // 如果存在，更新它；否则，新增一个文档
                 if (existing) {
-                    await getRecordsRef().doc(existing.id).set(newRecord, { merge: true });
+                    docRef = getRecordsRef().doc(existing.id);
+                    await docRef.set(newRecord, { merge: true });
                     alert(`记录 ${newRecord.date} 已成功覆盖更新！`);
                 } else {
-                    await getRecordsRef().add(newRecord);
+                    docRef = await getRecordsRef().add(newRecord);
                     alert(`记录 ${newRecord.date} 已成功新增！`);
                 }
 
@@ -539,7 +544,7 @@
         }
 
         // =======================================================
-        // 6. 核心逻辑 (与原逻辑相似，但调用异步数据函数)
+        // 6. 核心逻辑 (计算和记录)
         // =======================================================
         
         oneClickBtn.addEventListener('click', async function() {
@@ -554,24 +559,27 @@
             if (!auth.currentUser) { alert('请先登录！'); return; }
 
             const totalHours = calculateHourDiff(startTime, endTime);
-            const coreWorkHours = Math.max(0, totalHours); 
+            // 核心工时 = (打卡总时长 - 休息时间)，向下取整到 0
+            const coreWorkHours = Math.max(0, totalHours - restTime); 
 
             // 自动计算加班
             if (workType === '正常工作' || workType === '出差') {
+                // 自动计算超过标准工时部分
                 const calculatedOvertime = Math.max(0, coreWorkHours - STANDARD_DAY_HOURS);
+                // 实际加班时间 = (手动输入的加班时间 + 自动计算的加班时间)
                 overtimeTime = parseFloat(overtimeTime) + calculatedOvertime; 
             }
 
             const actualOvertime = overtimeTime.toFixed(1);
+            // 实际工作小时 = 核心工时 + 实际加班时间
             const actualWorkHours = (coreWorkHours + parseFloat(actualOvertime)).toFixed(1); 
 
             const newRecord = {
-                // 不再依赖 localStorage 的 records 数组，而是根据 date 查找或新增
                 date: workDate, startTime, endTime,
                 restTime: restTime.toFixed(1), overtimeTime: actualOvertime, 
-                coreWorkHours: coreWorkHours.toFixed(1), // 总打卡时长 (带薪)
+                coreWorkHours: coreWorkHours.toFixed(1), // 总打卡时长 (已扣除休息)
                 actualWorkHours, workType,
-                // 添加时间戳便于排序
+                // 添加时间戳便于排序 (虽然我们主要用 date 字段排序)
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             };
 
@@ -583,15 +591,26 @@
             const [sH, sM] = start.split(':').map(Number);
             const [eH, eM] = end.split(':').map(Number);
             let diffMin = (eH * 60 + eM) - (sH * 60 + sM);
-            return diffMin < 0 ? (diffMin + 24*60)/60 : diffMin/60; 
+            // 跨天计算 (例如 23:00 到 01:00)
+            if (diffMin < 0) {
+                diffMin += 24 * 60; 
+            }
+            return diffMin/60; 
         }
 
         // =======================================================
         // 7. 统计和历史显示 (依赖 allRecords 数组)
         // =======================================================
+        
+        // 辅助函数：格式化日期，只显示月日
+        function formatDate(isoDate, showYear = false) {
+            const parts = isoDate.split('-');
+            if (parts.length < 3) return isoDate;
+            const [year, month, day] = parts;
+            return showYear ? `${year}-${month}-${day}` : `${parseInt(month)}月${parseInt(day)}日`;
+        }
 
         function generateFilterOptions(records) {
-            // ... (逻辑不变，使用传入的 records 数组)
             const years = new Set();
             records.forEach(r => years.add(r.date.substring(0, 4)));
             
@@ -617,11 +636,12 @@
                 filterMonthEl.appendChild(option);
             }
             
-            // 恢复/设置默认选中项
-            const currentYear = new Date().getFullYear().toString();
-            const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
+            // 恢复/设置默认选中项 (默认选中当前年月)
+            const today = new Date();
+            const currentYear = today.getFullYear().toString();
+            const currentMonth = (today.getMonth() + 1).toString().padStart(2, '0');
 
-            if (currentSelectedYear && currentSelectedYear !== 'all' && sortedYears.includes(currentSelectedYear)) {
+            if (currentSelectedYear && (currentSelectedYear === 'all' || sortedYears.includes(currentSelectedYear))) {
                 filterYearEl.value = currentSelectedYear;
             } else if (sortedYears.includes(currentYear)) {
                 filterYearEl.value = currentYear;
@@ -671,7 +691,7 @@
             document.getElementById('total-label').textContent = `${timeScope}总工时 (正常)`;
             document.getElementById('overtime-exchange-label').textContent = `${timeScope}加班兑换天数`; 
 
-            // 1. 计算筛选出的总工时 (正常部分)
+            // 1. 计算筛选出的总工时 (正常部分，即不超过标准工时 9.5 小时的部分)
             const normalTotal = currentFilteredRecords.reduce((sum, r) => {
                 return sum + Math.min(parseFloat(r.coreWorkHours) || 0, STANDARD_DAY_HOURS); 
             }, 0).toFixed(1);
@@ -689,7 +709,7 @@
             monthDaysEl.textContent = workDays + ' 天';
             monthTotalEl.textContent = normalTotal + ' 小时';
             monthOvertimeExchangeEl.textContent = exchangeDays + ' 天';
-            totalDaysEl.textContent = allRecords.length + ' 条记录'; // 注意：这里是记录条数，不是去重天数
+            totalDaysEl.textContent = allRecords.length + ' 条记录'; // 总记录条数
             
             showMonthDetails(currentFilteredRecords, timeScope);
         }
@@ -698,6 +718,7 @@
             const selectedMonth = filterMonthEl.value;
             const selectedYear = filterYearEl.value;
 
+            // 只有当同时选中年和月时，才显示详细表格
             if (selectedMonth === 'all' || selectedYear === 'all') {
                 monthDetailsCardEl.style.display = 'none';
                 return;
@@ -716,8 +737,9 @@
 
             monthDetailsBodyEl.innerHTML = '';
             sortedRecords.forEach(record => {
-                const coreHours = parseFloat(record.coreWorkHours);
-                const normalHours = Math.min(coreHours, STANDARD_DAY_HOURS).toFixed(1);
+                const coreHours = parseFloat(record.coreWorkHours) || 0;
+                // 正常工时 = 核心工时中不超过标准时长的部分
+                const normalHours = Math.min(coreHours, STANDARD_DAY_HOURS).toFixed(1); 
 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -753,12 +775,7 @@
                 historyBodyEl.appendChild(row);
             });
         }
-
-        function formatDate(dateStr, showYear = false) { 
-            const parts = dateStr.split('-');
-            return showYear ? parts.join('-') : parts.slice(1).join('-'); 
-        }
-
     </script>
-</body>
+    
+    </body>
 </html>
