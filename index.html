@@ -83,7 +83,7 @@
         .month-details-card .close-btn:hover { color: #333; }
         .details-table-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
 
-        /* 新增：退出按钮样式 */
+        /* 退出按钮样式 */
         #sign-out-button {
             position: absolute;
             top: 20px;
@@ -91,13 +91,6 @@
             width: auto;
             padding: 8px 15px;
             font-size: 14px;
-        }
-
-        /* 手机号登录样式调整 */
-        #recaptcha-container {
-            margin: 15px 0 20px 0;
-            display: flex;
-            justify-content: center;
         }
     </style>
 </head>
@@ -108,28 +101,23 @@
         </div>
 
         <div id="auth-container" class="card">
-            <h3>🔐 用户认证（手机号登录）</h3>
+            <h3>🔐 用户认证（邮箱/密码登录）</h3>
 
             <div class="form-group">
-                <label for="phone-number">手机号码（含区号，例如 +86138...）</label>
-                <input type="tel" id="phone-number" placeholder="+86...">
+                <label for="email-input">邮箱</label>
+                <input type="email" id="email-input" placeholder="请输入您的邮箱地址">
             </div>
 
-            <div id="recaptcha-container"></div> 
+            <div class="form-group">
+                <label for="password-input">密码</label>
+                <input type="password" id="password-input" placeholder="请输入密码">
+            </div>
             
-            <button class="btn-primary" id="send-code-button">发送验证码</button>
-
-            <div id="verification-step" style="display:none; margin-top: 20px;">
-                <hr style="margin: 10px 0;">
-                <div class="form-group">
-                    <label for="verification-code">验证码</label>
-                    <input type="text" id="verification-code" placeholder="输入6位验证码">
-                </div>
-                <button class="btn-primary" id="verify-code-button">验证并登录</button>
+            <div id="auth-buttons-group">
+                <button class="btn-primary" id="sign-up-button">注册新用户</button>
+                <button class="btn-primary" id="sign-in-button" style="margin-top: 10px;">登录</button>
             </div>
         </div>
-
-
         <div id="main-app-content" style="display:none;">
             <button class="btn-danger" id="sign-out-button">安全退出</button>
 
@@ -274,6 +262,7 @@
         // 🚨 1. Firebase 配置 (已使用您提供的正确配置)
         // =======================================================
         const firebaseConfig = {
+            // 请确保这个 API Key 是正确的 Web API Key
             apiKey: "AIzaSyDHj7QaaOytBOOnvbwkGMxMhmt8HU5dSdU",
             authDomain: "worktimer-4bc4f.firebaseapp.com",
             projectId: "worktimer-4bc4f", 
@@ -291,7 +280,7 @@
 
         // 常量
         const STANDARD_DAY_HOURS = 9.5; 
-        const USER_DEFAULTS_KEY = 'workDataDefaults'; // 仍然使用 localstorage 存储默认值
+        const USER_DEFAULTS_KEY = 'workDataDefaults'; 
 
         // 元素引用
         const workDateEl = document.getElementById('work-date');
@@ -314,20 +303,19 @@
         const monthDetailsCardEl = document.getElementById('month-details-card'); 
         const monthDetailsBodyEl = document.getElementById('month-details-body');
         
-        // 认证元素
+        // **修改：Email/Password 认证元素**
         const authContainerEl = document.getElementById('auth-container');
         const mainAppContentEl = document.getElementById('main-app-content');
-        const sendCodeButton = document.getElementById('send-code-button');
-        const phoneNumberEl = document.getElementById('phone-number');
-        const verificationStepEl = document.getElementById('verification-step');
-        const verifyCodeButton = document.getElementById('verify-code-button');
-        const verificationCodeEl = document.getElementById('verification-code');
+        const emailInputEl = document.getElementById('email-input');
+        const passwordInputEl = document.getElementById('password-input');
+        const signUpButton = document.getElementById('sign-up-button');
+        const signInButton = document.getElementById('sign-in-button');
+        // **修改结束**
 
-        let confirmationResult = null; // 用于存储发送短信后返回的确认结果对象
         let allRecords = []; // 存储当前用户的全部记录
 
         // =======================================================
-        // 3. 初始设置和加载
+        // 3. 初始设置和加载 (保持不变)
         // =======================================================
         window.onload = function() {
             const today = new Date().toISOString().split('T')[0];
@@ -336,7 +324,6 @@
             generateTimeOptions(endTimeEl);
             restoreDefaultOptions();
             generateFilterOptions(allRecords); 
-            // 初始时等待 onAuthStateChanged 触发
         };
 
         function generateTimeOptions(selectEl) {
@@ -372,10 +359,8 @@
         }
 
         // =======================================================
-        // 4. 身份验证逻辑 (手机号登录)
+        // 4. 身份验证逻辑 (Email/Password 登录)
         // =======================================================
-
-        auth.languageCode = 'zh-CN'; 
 
         // 监听认证状态变化 (用户刷新或首次加载时触发)
         auth.onAuthStateChanged(async (user) => {
@@ -388,19 +373,6 @@
                 // 用户未登录，显示登录界面
                 authContainerEl.style.display = 'block';
                 mainAppContentEl.style.display = 'none';
-                
-                // 确保 reCAPTCHA 在未登录时渲染
-                if (!window.recaptchaVerifier) {
-                    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-                        'size': 'normal', 
-                        'callback': (response) => { /* solved */ },
-                        'expired-callback': () => { alert('reCAPTCHA 已过期，请重新验证。'); }
-                    });
-                    // 必须渲染 reCAPTCHA，以便 grecaptcha 对象被创建
-                    window.recaptchaVerifier.render().then(widgetId => {
-                        window.recaptchaWidgetId = widgetId;
-                    });
-                }
             }
         });
 
@@ -414,58 +386,63 @@
             });
         });
 
-        // 发送验证码
-        sendCodeButton.addEventListener('click', () => {
-            const phoneNumber = phoneNumberEl.value.trim();
-            if (!phoneNumber) { alert('请输入手机号码！'); return; }
-
-            sendCodeButton.disabled = true;
-            sendCodeButton.textContent = '发送中...';
+        // 注册新用户
+        signUpButton.addEventListener('click', () => {
+            const email = emailInputEl.value.trim();
+            const password = passwordInputEl.value.trim();
+            if (!email || !password || password.length < 6) { 
+                alert('请输入有效的邮箱和至少6位密码！'); 
+                return; 
+            }
             
-            auth.signInWithPhoneNumber(phoneNumber, window.recaptchaVerifier)
-                .then((result) => {
-                    confirmationResult = result;
-                    verificationStepEl.style.display = 'block';
-                    sendCodeButton.style.display = 'none'; 
-                    alert('验证码已发送到您的手机，请注意查收！');
-                })
-                .catch((error) => {
-                    console.error("SMS发送失败:", error);
-                    // 错误提示现在应该更准确，例如 auth/invalid-phone-number 或 auth/too-many-requests
-                    alert('发送验证码失败: ' + error.message);
-                    sendCodeButton.disabled = false;
-                    sendCodeButton.textContent = '发送验证码';
-                    if(window.recaptchaWidgetId) {
-                        // 重置 reCAPTCHA，以便用户可以再次尝试
-                        grecaptcha.reset(window.recaptchaWidgetId);
-                    }
-                });
-        });
+            signUpButton.disabled = true;
+            signUpButton.textContent = '注册中...';
 
-        // 验证码验证并登录
-        verifyCodeButton.addEventListener('click', () => {
-            const code = verificationCodeEl.value.trim();
-            if (!confirmationResult || !code) { alert('请输入验证码！'); return; }
-
-            verifyCodeButton.disabled = true;
-            verifyCodeButton.textContent = '登录中...';
-
-            confirmationResult.confirm(code)
-                .then((result) => {
-                    alert(`登录成功！欢迎回来，用户 ID: ${result.user.uid}`);
+            auth.createUserWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    alert(`注册成功！欢迎新用户: ${userCredential.user.email}`);
                     // onAuthStateChanged 会处理后续的 UI 切换和数据加载
                 })
                 .catch((error) => {
-                    console.error("验证失败:", error);
-                    alert('验证失败，请检查验证码是否正确。');
-                    verifyCodeButton.disabled = false;
-                    verifyCodeButton.textContent = '验证并登录';
+                    console.error("注册失败:", error);
+                    alert('注册失败: ' + error.message);
+                })
+                .finally(() => {
+                    signUpButton.disabled = false;
+                    signUpButton.textContent = '注册新用户';
                 });
         });
 
+        // 登录现有用户
+        signInButton.addEventListener('click', () => {
+            const email = emailInputEl.value.trim();
+            const password = passwordInputEl.value.trim();
+            if (!email || !password) { 
+                alert('请输入邮箱和密码！'); 
+                return; 
+            }
+            
+            signInButton.disabled = true;
+            signInButton.textContent = '登录中...';
+
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    alert(`登录成功！欢迎回来: ${userCredential.user.email}`);
+                    // onAuthStateChanged 会处理后续的 UI 切换和数据加载
+                })
+                .catch((error) => {
+                    console.error("登录失败:", error);
+                    alert('登录失败: ' + error.message);
+                })
+                .finally(() => {
+                    signInButton.disabled = false;
+                    signInButton.textContent = '登录';
+                });
+        });
+        // **修改结束**
 
         // =======================================================
-        // 5. Firestore 数据操作 (替换 localStorage)
+        // 5. Firestore 数据操作 (保持不变)
         // =======================================================
         
         function getRecordsRef() {
@@ -544,7 +521,7 @@
         }
 
         // =======================================================
-        // 6. 核心逻辑 (计算和记录)
+        // 6. 核心逻辑 (计算和记录) (保持不变)
         // =======================================================
         
         oneClickBtn.addEventListener('click', async function() {
@@ -599,7 +576,7 @@
         }
 
         // =======================================================
-        // 7. 统计和历史显示 (依赖 allRecords 数组)
+        // 7. 统计和历史显示 (保持不变)
         // =======================================================
         
         // 辅助函数：格式化日期，只显示月日
