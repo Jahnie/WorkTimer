@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>每日工时记录器（含加班+日期选择）</title>
+    <title>每日工时记录器（Firebase 安全同步）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: '微软雅黑', 'Microsoft YaHei', Arial, sans-serif; }
         body { background: #f5f7fa; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; } /* 增加容器最大宽度，避免挤压 */
+        .container { max-width: 900px; margin: 0 auto; }
         .header { text-align: center; margin-bottom: 25px; }
         .header h1 { color: #2d3748; font-size: 24px; }
         .card { background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); padding: 25px; margin-bottom: 20px; }
@@ -16,12 +16,21 @@
         label { display: block; margin-bottom: 8px; color: #666; font-size: 14px; font-weight: 500; }
         input, select, button { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 16px; }
         input:focus, select:focus { outline: none; border-color: #4299e1; }
-        .btn-primary { background: #4299e1; color: white; border: none; cursor: pointer; transition: background 0.3s; font-weight: 500; }
+        .btn-primary { 
+            background: #4299e1; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            transition: background 0.3s; 
+            font-weight: 500; 
+            margin-top: 5px;
+        }
         .btn-primary:hover { background: #3182ce; }
-        /* 修复：调整网格布局和最小宽度 */
+        .btn-danger { background: #e53e3e; }
+        .btn-danger:hover { background: #c53030; }
         .stats { 
             display: grid; 
-            grid-template-columns: repeat(4, minmax(100px, 1fr)); /* 确保每列最小宽度 */
+            grid-template-columns: repeat(4, minmax(100px, 1fr));
             gap: 15px; 
             margin-bottom: 25px; 
         } 
@@ -30,10 +39,10 @@
             color: #666; 
             font-size: 14px; 
             margin-bottom: 5px; 
-            white-space: nowrap; /* 修复：防止标题换行导致截断 */
+            white-space: nowrap; 
             overflow: hidden;
             text-overflow: ellipsis; 
-            padding: 0 5px; /* 增加内边距 */
+            padding: 0 5px;
         }
         .stat-item .value { color: #4299e1; font-size: 22px; font-weight: bold; }
         .stat-item .overtime-value { color: #e53e3e; }
@@ -47,7 +56,6 @@
         .option-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .option-row .form-group { flex: 1; min-width: 110px; margin-bottom: 0; }
         .tip { color: #999; font-size: 12px; margin-top: 5px; }
-        /* 统计筛选样式 */
         .stat-filter-row { display: flex; gap: 10px; margin-bottom: 15px; }
         .stat-filter-row .form-group { flex: 1; margin-bottom: 0; }
         .delete-btn { 
@@ -61,7 +69,6 @@
             transition: background 0.3s;
         }
         .delete-btn:hover { background: #c53030; }
-        /* 月份详情样式 */
         .month-details-card { display: none; } 
         .month-details-card h3 { display: flex; justify-content: space-between; align-items: center; font-size: 16px; color: #2d3748; }
         .month-details-card .close-btn { 
@@ -75,152 +82,216 @@
         }
         .month-details-card .close-btn:hover { color: #333; }
         .details-table-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
+
+        /* 新增：退出按钮样式 */
+        #sign-out-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: auto;
+            padding: 8px 15px;
+            font-size: 14px;
+        }
+
+        /* 手机号登录样式调整 */
+        #recaptcha-container {
+            margin: 15px 0 20px 0;
+            display: flex;
+            justify-content: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>每日工时一键记录（含加班+日期选择）</h1>
+            <h1>每日工时一键记录（Firebase 安全同步）</h1>
         </div>
 
-        <div class="stat-filter-row">
+        <div id="auth-container" class="card">
+            <h3>🔐 用户认证（手机号登录）</h3>
+
             <div class="form-group">
-                <label for="filter-year">筛选年份</label>
-                <select id="filter-year"></select>
+                <label for="phone-number">手机号码（含区号，例如 +86138...）</label>
+                <input type="tel" id="phone-number" placeholder="+86...">
             </div>
-            <div class="form-group">
-                <label for="filter-month">筛选月份</label>
-                <select id="filter-month"></select>
+
+            <div id="recaptcha-container"></div> 
+            
+            <button class="btn-primary" id="send-code-button">发送验证码</button>
+
+            <div id="verification-step" style="display:none; margin-top: 20px;">
+                <hr style="margin: 10px 0;">
+                <div class="form-group">
+                    <label for="verification-code">验证码</label>
+                    <input type="text" id="verification-code" placeholder="输入6位验证码">
+                </div>
+                <button class="btn-primary" id="verify-code-button">验证并登录</button>
             </div>
         </div>
 
-        <div class="stats">
-            <div class="stat-item">
-                <h3 id="total-days-label">...总工作天数</h3>
-                <div class="value" id="month-days">0 天</div>
-            </div>
-            <div class="stat-item">
-                <h3 id="total-label">...总工时 (正常)</h3>
-                <div class="value" id="month-total">0.0 小时</div>
-            </div>
-            <div class="stat-item">
-                <h3 id="overtime-exchange-label">...加班兑换天数</h3> 
-                <div class="value overtime-value" id="month-overtime-exchange">0.0 天</div>
-            </div>
-            <div class="stat-item">
-                <h3>所有记录天数</h3>
-                <div class="value" id="total-days">0 天</div>
-            </div>
-        </div>
 
-        <div class="card">
-            <div class="option-row">
+        <div id="main-app-content" style="display:none;">
+            <button class="btn-danger" id="sign-out-button">安全退出</button>
+
+            <div class="stat-filter-row">
                 <div class="form-group">
-                    <label for="work-date">工作日期</label>
-                    <input type="date" id="work-date" required>
-                    <div class="tip">默认今日，可手动选择</div>
+                    <label for="filter-year">筛选年份</label>
+                    <select id="filter-year"></select>
                 </div>
                 <div class="form-group">
-                    <label for="start-time">上班时间</label>
-                    <select id="start-time"></select>
-                    <div class="tip">首次选择后自动默认</div>
+                    <label for="filter-month">筛选月份</label>
+                    <select id="filter-month"></select>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <h3 id="total-days-label">...总工作天数</h3>
+                    <div class="value" id="month-days">0 天</div>
+                </div>
+                <div class="stat-item">
+                    <h3 id="total-label">...总工时 (正常)</h3>
+                    <div class="value" id="month-total">0.0 小时</div>
+                </div>
+                <div class="stat-item">
+                    <h3 id="overtime-exchange-label">...加班兑换天数</h3> 
+                    <div class="value overtime-value" id="month-overtime-exchange">0.0 天</div>
+                </div>
+                <div class="stat-item">
+                    <h3>所有记录天数</h3>
+                    <div class="value" id="total-days">0 天</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="option-row">
+                    <div class="form-group">
+                        <label for="work-date">工作日期</label>
+                        <input type="date" id="work-date" required>
+                        <div class="tip">默认今日，可手动选择</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="start-time">上班时间</label>
+                        <select id="start-time"></select>
+                        <div class="tip">首次选择后自动默认</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="end-time">下班时间</label>
+                        <select id="end-time"></select>
+                        <div class="tip">首次选择后自动默认</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="rest-time">休息时长（小时）</label>
+                        <select id="rest-time">
+                            <option value="0.0">0.0</option>
+                            <option value="0.5">0.5</option>
+                            <option value="1.0" selected>1.0</option>
+                            <option value="1.5">1.5</option>
+                            <option value="2.0">2.0</option>
+                        </select>
+                        <div class="tip">首次选择后自动默认</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="overtime-time">加班时长（小时）</label>
+                        <select id="overtime-time">
+                            <option value="0.0" selected>0.0</option>
+                            <option value="0.5">0.5</option>
+                            <option value="1.0">1.0</option>
+                            <option value="1.5">1.5</option>
+                            <option value="2.0">2.0</option>
+                            <option value="2.5">2.5</option>
+                            <option value="3.0">3.0</option>
+                        </select>
+                        <div class="tip">首次选择后自动默认</div>
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label for="end-time">下班时间</label>
-                    <select id="end-time"></select>
-                    <div class="tip">首次选择后自动默认</div>
-                </div>
-                <div class="form-group">
-                    <label for="rest-time">休息时长（小时）</label>
-                    <select id="rest-time">
-                        <option value="0.0">0.0</option>
-                        <option value="0.5">0.5</option>
-                        <option value="1.0" selected>1.0</option>
-                        <option value="1.5">1.5</option>
-                        <option value="2.0">2.0</option>
+                    <label for="work-type">工作类型</label>
+                    <select id="work-type">
+                        <option value="正常工作" selected>正常工作</option>
+                        <option value="加班">加班</option>
+                        <option value="调休">调休</option>
+                        <option value="出差">出差</option>
                     </select>
                     <div class="tip">首次选择后自动默认</div>
                 </div>
-                <div class="form-group">
-                    <label for="overtime-time">加班时长（小时）</label>
-                    <select id="overtime-time">
-                        <option value="0.0" selected>0.0</option>
-                        <option value="0.5">0.5</option>
-                        <option value="1.0">1.0</option>
-                        <option value="1.5">1.5</option>
-                        <option value="2.0">2.0</option>
-                        <option value="2.5">2.5</option>
-                        <option value="3.0">3.0</option>
-                    </select>
-                    <div class="tip">首次选择后自动默认</div>
+                <button class="btn-primary" id="one-click-record">一键记录工时</button>
+            </div>
+
+            <div class="card month-details-card" id="month-details-card">
+                <h3 id="month-details-title">
+                    <span>月份详细记录</span>
+                    <button class="close-btn" onclick="document.getElementById('month-details-card').style.display='none';">&times;</button>
+                </h3>
+                <div class="details-table-container">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>上下班时间</th>
+                                <th>休息/加班（小时）</th>
+                                <th>核心工时</th>
+                                <th>实际工时</th>
+                                <th>类型</th>
+                                <th>操作</th> 
+                            </tr>
+                        </thead>
+                        <tbody id="month-details-body">
+                            </tbody>
+                    </table>
                 </div>
             </div>
-            <div class="form-group">
-                <label for="work-type">工作类型</label>
-                <select id="work-type">
-                    <option value="正常工作" selected>正常工作</option>
-                    <option value="加班">加班</option>
-                    <option value="调休">调休</option>
-                    <option value="出差">出差</option>
-                </select>
-                <div class="tip">首次选择后自动默认</div>
-            </div>
-            <button class="btn-primary" id="one-click-record">一键记录工时</button>
-        </div>
 
-        <div class="card month-details-card" id="month-details-card">
-            <h3 id="month-details-title">
-                <span>月份详细记录</span>
-                <button class="close-btn" onclick="document.getElementById('month-details-card').style.display='none';">&times;</button>
-            </h3>
-            <div class="details-table-container">
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>日期</th>
-                            <th>上下班时间</th>
-                            <th>休息/加班（小时）</th>
-                            <th>核心工时</th>
-                            <th>实际工时</th>
-                            <th>类型</th>
-                            <th>操作</th> 
-                        </tr>
-                    </thead>
-                    <tbody id="month-details-body">
+            <div class="card">
+                <h3 style="margin-bottom: 15px; color: #2d3748; font-size: 16px;">近期记录（最近10条）</h3>
+                <div class="history" id="history-container">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>上下班时间</th>
+                                <th>休息/加班（小时）</th>
+                                <th>实际工时（小时）</th>
+                                <th>类型</th>
+                                <th>操作</th> 
+                            </tr>
+                        </thead>
+                        <tbody id="history-body">
+                            <tr><td colspan="6" class="empty">加载中... 请等待数据同步</td></tr>
                         </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="card">
-            <h3 style="margin-bottom: 15px; color: #2d3748; font-size: 16px;">近期记录（最近10条）</h3>
-            <div class="history" id="history-container">
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>日期</th>
-                            <th>上下班时间</th>
-                            <th>休息/加班（小时）</th>
-                            <th>实际工时（小时）</th>
-                            <th>类型</th>
-                            <th>操作</th> 
-                        </tr>
-                    </thead>
-                    <tbody id="history-body">
-                        <tr><td colspan="6" class="empty">暂无记录，点击一键记录添加</td></tr>
-                    </tbody>
-                </table>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+
     <script>
-        let workData = JSON.parse(localStorage.getItem('simpleWorkData')) || {
-            records: [],
-            defaults: { startTime: '', endTime: '', restTime: '', overtimeTime: '', workType: '' }
+        // =======================================================
+        // 🚨 1. Firebase 配置 (请替换为您的项目配置!)
+        // =======================================================
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR-PROJECT-ID", // 例如: my-work-tracker-12345
+            storageBucket: "YOUR-PROJECT-ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
 
+        // =======================================================
+        // 2. 初始化 Firebase & 引用服务
+        // =======================================================
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // 常量
         const STANDARD_DAY_HOURS = 9.5; 
+        const USER_DEFAULTS_KEY = 'workDataDefaults'; // 仍然使用 localstorage 存储默认值
 
         // 元素引用
         const workDateEl = document.getElementById('work-date');
@@ -239,27 +310,33 @@
         const monthDaysEl = document.getElementById('month-days');
         const monthTotalEl = document.getElementById('month-total');
         const monthOvertimeExchangeEl = document.getElementById('month-overtime-exchange');
-        const totalLabelEl = document.getElementById('total-label');
-        const overtimeLabelEl = document.getElementById('overtime-exchange-label');
-
+        
         const monthDetailsCardEl = document.getElementById('month-details-card'); 
-        const monthDetailsTitleEl = document.getElementById('month-details-title');
         const monthDetailsBodyEl = document.getElementById('month-details-body');
+        
+        // 认证元素
+        const authContainerEl = document.getElementById('auth-container');
+        const mainAppContentEl = document.getElementById('main-app-content');
+        const sendCodeButton = document.getElementById('send-code-button');
+        const phoneNumberEl = document.getElementById('phone-number');
+        const verificationStepEl = document.getElementById('verification-step');
+        const verifyCodeButton = document.getElementById('verify-code-button');
+        const verificationCodeEl = document.getElementById('verification-code');
 
-        let currentFilteredRecords = [];
+        let confirmationResult = null; // 用于存储发送短信后返回的确认结果对象
+        let allRecords = []; // 存储当前用户的全部记录
 
+        // =======================================================
+        // 3. 初始设置和加载
+        // =======================================================
         window.onload = function() {
             const today = new Date().toISOString().split('T')[0];
             workDateEl.value = today;
             generateTimeOptions(startTimeEl);
             generateTimeOptions(endTimeEl);
             restoreDefaultOptions();
-            generateFilterOptions(); 
-            updateStats();
-            updateHistory();
-
-            filterYearEl.addEventListener('change', updateStats);
-            filterMonthEl.addEventListener('change', updateStats);
+            generateFilterOptions(allRecords); 
+            // 初始时等待 onAuthStateChanged 触发
         };
 
         function generateTimeOptions(selectEl) {
@@ -275,49 +352,230 @@
         }
 
         function restoreDefaultOptions() {
-            startTimeEl.value = workData.defaults.startTime || '09:00';
-            endTimeEl.value = workData.defaults.endTime || '18:30';
-            restTimeEl.value = workData.defaults.restTime || '1.0';
-            overtimeTimeEl.value = workData.defaults.overtimeTime || '0.0';
-            workTypeEl.value = workData.defaults.workType || '正常工作';
+            const defaults = JSON.parse(localStorage.getItem(USER_DEFAULTS_KEY)) || {};
+            startTimeEl.value = defaults.startTime || '09:00';
+            endTimeEl.value = defaults.endTime || '18:30';
+            restTimeEl.value = defaults.restTime || '1.0';
+            overtimeTimeEl.value = defaults.overtimeTime || '0.0';
+            workTypeEl.value = defaults.workType || '正常工作';
         }
 
-        oneClickBtn.addEventListener('click', function() {
+        function saveDefaultOptions() {
+            const defaults = {
+                startTime: startTimeEl.value,
+                endTime: endTimeEl.value,
+                restTime: restTimeEl.value,
+                overtimeTime: overtimeTimeEl.value,
+                workType: workTypeEl.value
+            };
+            localStorage.setItem(USER_DEFAULTS_KEY, JSON.stringify(defaults));
+        }
+
+        // =======================================================
+        // 4. 身份验证逻辑 (手机号登录)
+        // =======================================================
+
+        auth.languageCode = 'zh-CN'; 
+
+        // 监听认证状态变化 (用户刷新或首次加载时触发)
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                // 用户已登录，显示应用主体
+                authContainerEl.style.display = 'none';
+                mainAppContentEl.style.display = 'block';
+                await loadAllWorkRecords(); // 异步加载数据
+            } else {
+                // 用户未登录，显示登录界面
+                authContainerEl.style.display = 'block';
+                mainAppContentEl.style.display = 'none';
+                
+                // 确保 reCAPTCHA 在未登录时渲染
+                if (!window.recaptchaVerifier) {
+                    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+                        'size': 'normal', 
+                        'callback': (response) => { /* solved */ },
+                        'expired-callback': () => { alert('reCAPTCHA 已过期，请重新验证。'); }
+                    });
+                    // 必须渲染 reCAPTCHA，以便 grecaptcha 对象被创建
+                    window.recaptchaVerifier.render().then(widgetId => {
+                         window.recaptchaWidgetId = widgetId;
+                    });
+                }
+            }
+        });
+
+        // 退出登录
+        document.getElementById('sign-out-button').addEventListener('click', () => {
+            auth.signOut().then(() => {
+                alert('已安全退出。');
+            }).catch((error) => {
+                console.error("退出失败:", error);
+                alert('退出失败。');
+            });
+        });
+
+        // 发送验证码
+        sendCodeButton.addEventListener('click', () => {
+            const phoneNumber = phoneNumberEl.value.trim();
+            if (!phoneNumber) { alert('请输入手机号码！'); return; }
+
+            sendCodeButton.disabled = true;
+            sendCodeButton.textContent = '发送中...';
+            
+            auth.signInWithPhoneNumber(phoneNumber, window.recaptchaVerifier)
+                .then((result) => {
+                    confirmationResult = result;
+                    verificationStepEl.style.display = 'block';
+                    sendCodeButton.style.display = 'none'; 
+                    alert('验证码已发送到您的手机，请注意查收！');
+                })
+                .catch((error) => {
+                    console.error("SMS发送失败:", error);
+                    alert('发送验证码失败: ' + error.message);
+                    sendCodeButton.disabled = false;
+                    sendCodeButton.textContent = '发送验证码';
+                    if(window.recaptchaWidgetId) {
+                         grecaptcha.reset(window.recaptchaWidgetId);
+                    }
+                });
+        });
+
+        // 验证码验证并登录
+        verifyCodeButton.addEventListener('click', () => {
+            const code = verificationCodeEl.value.trim();
+            if (!confirmationResult || !code) { alert('请输入验证码！'); return; }
+
+            verifyCodeButton.disabled = true;
+            verifyCodeButton.textContent = '登录中...';
+
+            confirmationResult.confirm(code)
+                .then((result) => {
+                    alert(`登录成功！欢迎回来，用户 ID: ${result.user.uid}`);
+                    // onAuthStateChanged 会处理后续的 UI 切换和数据加载
+                })
+                .catch((error) => {
+                    console.error("验证失败:", error);
+                    alert('验证失败，请检查验证码是否正确。');
+                    verifyCodeButton.disabled = false;
+                    verifyCodeButton.textContent = '验证并登录';
+                });
+        });
+
+
+        // =======================================================
+        // 5. Firestore 数据操作 (替换 localStorage)
+        // =======================================================
+        
+        function getRecordsRef() {
+            const user = auth.currentUser;
+            if (!user) { throw new Error("用户未登录，无法访问数据。"); }
+            // 数据路径: users/{UID}/records
+            return db.collection("users").doc(user.uid).collection("records");
+        }
+
+        /**
+         * 从 Firestore 加载当前用户的所有工时记录。
+         */
+        async function loadAllWorkRecords() {
+            try {
+                const snapshot = await getRecordsRef().orderBy('date', 'desc').get();
+                allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // 确保日期是字符串格式，以便后续排序和筛选
+                allRecords.forEach(r => r.date = r.date || new Date().toISOString().split('T')[0]);
+
+                generateFilterOptions(allRecords);
+                updateStats();
+                updateHistory();
+            } catch (error) {
+                console.error("加载记录失败:", error);
+                alert("数据加载失败，请检查网络或Firebase配置。");
+                historyBodyEl.innerHTML = '<tr><td colspan="6" class="empty">数据加载失败</td></tr>';
+            }
+        }
+        
+        /**
+         * 记录或更新一条工时记录。
+         */
+        async function recordWorkEntry(newRecord) {
+            try {
+                // 查找是否已存在该日期的记录
+                const existing = allRecords.find(r => r.date === newRecord.date);
+                
+                // 如果存在，更新它；否则，新增一个文档
+                if (existing) {
+                    await getRecordsRef().doc(existing.id).set(newRecord, { merge: true });
+                    alert(`记录 ${newRecord.date} 已成功覆盖更新！`);
+                } else {
+                    await getRecordsRef().add(newRecord);
+                    alert(`记录 ${newRecord.date} 已成功新增！`);
+                }
+
+                // 更新完成后，重新加载和刷新界面
+                await loadAllWorkRecords(); 
+                saveDefaultOptions(); // 保存默认值到 localStorage
+                
+            } catch (error) {
+                console.error("记录工时失败:", error);
+                alert("记录工时失败，请重试。");
+            }
+        }
+
+        /**
+         * 删除一条工时记录。
+         */
+        window.deleteRecord = async function(docId) {
+            if (!confirm(`确定要删除此条记录吗？`)) {
+                return;
+            }
+            try {
+                await getRecordsRef().doc(docId).delete();
+                await loadAllWorkRecords();
+                alert("记录删除成功！");
+            } catch (error) {
+                console.error("删除记录失败:", error);
+                alert("删除记录失败，请重试。");
+            }
+        }
+
+        // =======================================================
+        // 6. 核心逻辑 (与原逻辑相似，但调用异步数据函数)
+        // =======================================================
+        
+        oneClickBtn.addEventListener('click', async function() {
             const workDate = workDateEl.value;
             const startTime = startTimeEl.value;
             const endTime = endTimeEl.value;
             const restTime = parseFloat(restTimeEl.value) || 0;
-            const overtimeTime = parseFloat(overtimeTimeEl.value) || 0;
+            let overtimeTime = parseFloat(overtimeTimeEl.value) || 0; 
             const workType = workTypeEl.value;
 
             if (!workDate) { alert('请选择工作日期！'); return; }
-            if (workData.records.some(r => r.date === workDate)) { alert('该日期已记录！'); return; }
-
-            workData.defaults.startTime = startTime;
-            workData.defaults.endTime = endTime;
-            workData.defaults.restTime = restTime.toString();
-            workData.defaults.overtimeTime = overtimeTime.toString();
-            workData.defaults.workType = workType;
+            if (!auth.currentUser) { alert('请先登录！'); return; }
 
             const totalHours = calculateHourDiff(startTime, endTime);
-            const coreWorkHours = Math.max(0, (totalHours - restTime));
-            const actualWorkHours = (coreWorkHours + overtimeTime).toFixed(1);
+            const coreWorkHours = Math.max(0, totalHours); 
 
-            workData.records.unshift({
+            // 自动计算加班
+            if (workType === '正常工作' || workType === '出差') {
+                const calculatedOvertime = Math.max(0, coreWorkHours - STANDARD_DAY_HOURS);
+                overtimeTime = parseFloat(overtimeTime) + calculatedOvertime; 
+            }
+
+            const actualOvertime = overtimeTime.toFixed(1);
+            const actualWorkHours = (coreWorkHours + parseFloat(actualOvertime)).toFixed(1); 
+
+            const newRecord = {
+                // 不再依赖 localStorage 的 records 数组，而是根据 date 查找或新增
                 date: workDate, startTime, endTime,
-                restTime: restTime.toFixed(1), overtimeTime: overtimeTime.toFixed(1),
-                coreWorkHours: coreWorkHours.toFixed(1),
-                actualWorkHours, workType
-            });
-            
-            generateFilterOptions(); 
+                restTime: restTime.toFixed(1), overtimeTime: actualOvertime, 
+                coreWorkHours: coreWorkHours.toFixed(1), // 总打卡时长 (带薪)
+                actualWorkHours, workType,
+                // 添加时间戳便于排序
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            };
 
-            saveData();
-            updateStats();
-            updateHistory();
-            alert(overtimeTime > 0 
-                ? `记录成功！实际工时：${actualWorkHours}小时（核心${coreWorkHours.toFixed(1)}h + 加班${overtimeTime.toFixed(1)}h）`
-                : `记录成功！实际工时：${actualWorkHours}小时`);
+            await recordWorkEntry(newRecord);
         });
 
         function calculateHourDiff(start, end) {
@@ -328,13 +586,17 @@
             return diffMin < 0 ? (diffMin + 24*60)/60 : diffMin/60; 
         }
 
-        function generateFilterOptions() {
+        // =======================================================
+        // 7. 统计和历史显示 (依赖 allRecords 数组)
+        // =======================================================
+
+        function generateFilterOptions(records) {
+            // ... (逻辑不变，使用传入的 records 数组)
             const years = new Set();
-            workData.records.forEach(r => years.add(r.date.substring(0, 4)));
+            records.forEach(r => years.add(r.date.substring(0, 4)));
             
             const sortedYears = Array.from(years).sort((a, b) => b - a);
             
-            // 保存用户当前的选择，避免刷新后丢失
             const currentSelectedYear = filterYearEl.value;
             const currentSelectedMonth = filterMonthEl.value;
 
@@ -359,12 +621,12 @@
             const currentYear = new Date().getFullYear().toString();
             const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
 
-            if (currentSelectedYear && currentSelectedYear !== 'all') {
+            if (currentSelectedYear && currentSelectedYear !== 'all' && sortedYears.includes(currentSelectedYear)) {
                 filterYearEl.value = currentSelectedYear;
             } else if (sortedYears.includes(currentYear)) {
                 filterYearEl.value = currentYear;
             } else if (sortedYears.length > 0) {
-                 filterYearEl.value = sortedYears[0]; // 默认选中最新一年
+                 filterYearEl.value = sortedYears[0]; 
             } else {
                  filterYearEl.value = 'all';
             }
@@ -375,13 +637,16 @@
                 filterMonthEl.value = currentMonth;
             }
         }
+        
+        filterYearEl.addEventListener('change', updateStats);
+        filterMonthEl.addEventListener('change', updateStats);
 
 
         function updateStats() {
             const selectedYear = filterYearEl.value;
             const selectedMonth = filterMonthEl.value;
             
-            currentFilteredRecords = workData.records.filter(r => {
+            const currentFilteredRecords = allRecords.filter(r => {
                 const datePart = r.date.split('-');
                 const recordYear = datePart[0];
                 const recordMonth = datePart[1];
@@ -392,7 +657,7 @@
                 return yearMatch && monthMatch;
             });
 
-            // 更新标签文本
+            // 更新标签文本 (时间范围)
             let timeScope = '所有记录';
             if (selectedYear !== 'all' && selectedMonth !== 'all') {
                 timeScope = `${selectedYear}年${parseInt(selectedMonth)}月`;
@@ -402,14 +667,13 @@
                 timeScope = `${parseInt(selectedMonth)}月`;
             }
             
-            // 更新标题
             document.getElementById('total-days-label').textContent = `${timeScope}工作天数`;
             document.getElementById('total-label').textContent = `${timeScope}总工时 (正常)`;
             document.getElementById('overtime-exchange-label').textContent = `${timeScope}加班兑换天数`; 
 
-            // 1. 计算筛选出的总工时 (正常部分 - coreWorkHours)
+            // 1. 计算筛选出的总工时 (正常部分)
             const normalTotal = currentFilteredRecords.reduce((sum, r) => {
-                return sum + (parseFloat(r.coreWorkHours) || 0); 
+                return sum + Math.min(parseFloat(r.coreWorkHours) || 0, STANDARD_DAY_HOURS); 
             }, 0).toFixed(1);
 
             // 2. 计算筛选出的加班总时长
@@ -425,14 +689,12 @@
             monthDaysEl.textContent = workDays + ' 天';
             monthTotalEl.textContent = normalTotal + ' 小时';
             monthOvertimeExchangeEl.textContent = exchangeDays + ' 天';
-            totalDaysEl.textContent = workData.records.length + ' 天';
+            totalDaysEl.textContent = allRecords.length + ' 条记录'; // 注意：这里是记录条数，不是去重天数
             
-            // 每次更新统计后，尝试显示月份详情
             showMonthDetails(currentFilteredRecords, timeScope);
         }
 
         function showMonthDetails(records, title) {
-            // 只有当选择特定年份和月份时才显示详细记录
             const selectedMonth = filterMonthEl.value;
             const selectedYear = filterYearEl.value;
 
@@ -442,7 +704,7 @@
             }
 
             monthDetailsCardEl.style.display = 'block';
-            monthDetailsTitleEl.querySelector('span').textContent = `${title}详细记录`;
+            document.getElementById('month-details-title').querySelector('span').textContent = `${title}详细记录`;
             
             // 按照日期升序排序 (从旧到新)
             const sortedRecords = records.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -454,39 +716,31 @@
 
             monthDetailsBodyEl.innerHTML = '';
             sortedRecords.forEach(record => {
+                const coreHours = parseFloat(record.coreWorkHours);
+                const normalHours = Math.min(coreHours, STANDARD_DAY_HOURS).toFixed(1);
+
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${formatDate(record.date, true)}</td>
                     <td>${record.startTime} - ${record.endTime}</td>
                     <td>${record.restTime} / <span class="overtime-td">${record.overtimeTime}</span></td>
-                    <td>${record.coreWorkHours}</td>
+                    <td>${normalHours}</td> 
                     <td>${record.actualWorkHours}</td>
                     <td>${record.workType}</td>
-                    <td><button class="delete-btn" onclick="deleteRecord('${record.date}')">删除</button></td>
+                    <td><button class="delete-btn" onclick="deleteRecord('${record.id}')">删除</button></td>
                 `;
                 monthDetailsBodyEl.appendChild(row);
             });
         }
 
-        // 删除记录的函数
-        window.deleteRecord = function(date) {
-            if (confirm(`确定要删除 ${date} 的工时记录吗？`)) {
-                workData.records = workData.records.filter(r => r.date !== date);
-                saveData();
-                generateFilterOptions(); 
-                updateStats(); 
-                updateHistory();
-            }
-        }
-
-
         function updateHistory() {
-            if (!workData.records.length) {
+            if (!allRecords.length) {
                 historyBodyEl.innerHTML = '<tr><td colspan="6" class="empty">暂无记录，点击一键记录添加</td></tr>';
                 return;
             }
             historyBodyEl.innerHTML = '';
-            workData.records.slice(0,10).forEach(record => { 
+            // 显示最新的 10 条记录
+            allRecords.slice(0,10).forEach(record => { 
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${formatDate(record.date)}</td>
@@ -494,7 +748,7 @@
                     <td>${record.restTime} / <span class="overtime-td">${record.overtimeTime}</span></td>
                     <td>${record.actualWorkHours}</td>
                     <td>${record.workType}</td>
-                    <td><button class="delete-btn" onclick="deleteRecord('${record.date}')">删除</button></td>
+                    <td><button class="delete-btn" onclick="deleteRecord('${record.id}')">删除</button></td>
                 `;
                 historyBodyEl.appendChild(row);
             });
@@ -505,7 +759,6 @@
             return showYear ? parts.join('-') : parts.slice(1).join('-'); 
         }
 
-        function saveData() { localStorage.setItem('simpleWorkData', JSON.stringify(workData)); }
     </script>
 </body>
 </html>
