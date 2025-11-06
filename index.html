@@ -189,18 +189,34 @@
                             <option value="2.0">2.0</option>
                             <option value="2.5">2.5</option>
                             <option value="3.0">3.0</option>
+                            <option value="3.5">3.5</option>
+                            <option value="4.0">4.0</option>
+                            <option value="4.5">4.5</option>
+                            <option value="5.0">5.0</option>
+                            <option value="5.5">5.5</option>
+                            <option value="6.0">6.0</option>
+                            <option value="6.5">6.5</option>
+                            <option value="7.0">7.0</option>
+                            <option value="7.5">7.5</option>
+                            <option value="8.0">8.0</option>
+                            <option value="8.5">8.5</option>
+                            <option value="9.0">9.0</option>
+                            <option value="9.5">9.5</option>
+                            <option value="10.0">10.0</option>
+                            <option value="10.5">10.5</option>
+                            <option value="11.0">11.0</option>
+                            <option value="11.5">11.5</option>
+                            <option value="12.0">12.0</option>
                         </select>
                         <div class="tip">首次选择后自动默认</div>
                     </div>
-                </div>
+                    </div>
                 <div class="form-group">
                     <label for="work-type">工作类型</label>
                     <select id="work-type">
                         <option value="正常工作" selected>正常工作</option>
                         <option value="加班">加班</option>
-                        <option value="调休">调休</option>
-                        <option value="出差">出差</option>
-                    </select>
+                        </select>
                     <div class="tip">首次选择后自动默认</div>
                 </div>
                 <button class="btn-primary" id="one-click-record">一键记录工时</button>
@@ -259,10 +275,9 @@
 
     <script>
         // =======================================================
-        // 🚨 1. Firebase 配置 (已使用您提供的正确配置)
+        // 🚨 1. Firebase 配置 
         // =======================================================
         const firebaseConfig = {
-            // 请确保这个 API Key 是正确的 Web API Key
             apiKey: "AIzaSyDHj7QaaOytBOOnvbwkGMxMhmt8HU5dSdU",
             authDomain: "worktimer-4bc4f.firebaseapp.com",
             projectId: "worktimer-4bc4f", 
@@ -303,19 +318,18 @@
         const monthDetailsCardEl = document.getElementById('month-details-card'); 
         const monthDetailsBodyEl = document.getElementById('month-details-body');
         
-        // **修改：Email/Password 认证元素**
+        // Email/Password 认证元素
         const authContainerEl = document.getElementById('auth-container');
         const mainAppContentEl = document.getElementById('main-app-content');
         const emailInputEl = document.getElementById('email-input');
         const passwordInputEl = document.getElementById('password-input');
         const signUpButton = document.getElementById('sign-up-button');
         const signInButton = document.getElementById('sign-in-button');
-        // **修改结束**
 
-        let allRecords = []; // 存储当前用户的全部记录
+        let allRecords = []; 
 
         // =======================================================
-        // 3. 初始设置和加载 (保持不变)
+        // 3. 初始设置和加载
         // =======================================================
         window.onload = function() {
             const today = new Date().toISOString().split('T')[0];
@@ -340,11 +354,18 @@
 
         function restoreDefaultOptions() {
             const defaults = JSON.parse(localStorage.getItem(USER_DEFAULTS_KEY)) || {};
+            // 确保 workType 仍然是允许的值
+            const savedWorkType = defaults.workType;
+            let finalWorkType = '正常工作';
+            if (savedWorkType === '正常工作' || savedWorkType === '加班') {
+                finalWorkType = savedWorkType;
+            }
+
             startTimeEl.value = defaults.startTime || '09:00';
             endTimeEl.value = defaults.endTime || '18:30';
             restTimeEl.value = defaults.restTime || '1.0';
             overtimeTimeEl.value = defaults.overtimeTime || '0.0';
-            workTypeEl.value = defaults.workType || '正常工作';
+            workTypeEl.value = finalWorkType; // 使用清理后的值
         }
 
         function saveDefaultOptions() {
@@ -362,15 +383,15 @@
         // 4. 身份验证逻辑 (Email/Password 登录)
         // =======================================================
 
-        // 监听认证状态变化 (用户刷新或首次加载时触发)
+        // 监听认证状态变化 
         auth.onAuthStateChanged(async (user) => {
             if (user) {
-                // 用户已登录，显示应用主体
+                // 用户已登录
                 authContainerEl.style.display = 'none';
                 mainAppContentEl.style.display = 'block';
-                await loadAllWorkRecords(); // 异步加载数据
+                await loadAllWorkRecords(); 
             } else {
-                // 用户未登录，显示登录界面
+                // 用户未登录
                 authContainerEl.style.display = 'block';
                 mainAppContentEl.style.display = 'none';
             }
@@ -401,7 +422,6 @@
             auth.createUserWithEmailAndPassword(email, password)
                 .then((userCredential) => {
                     alert(`注册成功！欢迎新用户: ${userCredential.user.email}`);
-                    // onAuthStateChanged 会处理后续的 UI 切换和数据加载
                 })
                 .catch((error) => {
                     console.error("注册失败:", error);
@@ -428,7 +448,6 @@
             auth.signInWithEmailAndPassword(email, password)
                 .then((userCredential) => {
                     alert(`登录成功！欢迎回来: ${userCredential.user.email}`);
-                    // onAuthStateChanged 会处理后续的 UI 切换和数据加载
                 })
                 .catch((error) => {
                     console.error("登录失败:", error);
@@ -439,33 +458,26 @@
                     signInButton.textContent = '登录';
                 });
         });
-        // **修改结束**
 
         // =======================================================
-        // 5. Firestore 数据操作 (保持不变)
+        // 5. Firestore 数据操作
         // =======================================================
         
         function getRecordsRef() {
             const user = auth.currentUser;
             if (!user) { throw new Error("用户未登录，无法访问数据。"); }
-            // 数据路径: users/{UID}/records
             return db.collection("users").doc(user.uid).collection("records");
         }
 
-        /**
-         * 从 Firestore 加载当前用户的所有工时记录。
-         */
         async function loadAllWorkRecords() {
             try {
-                // 按照日期降序排序 (最新在前面)
                 const snapshot = await getRecordsRef().orderBy('date', 'desc').get(); 
                 allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
-                // 确保日期是字符串格式，以便后续排序和筛选
                 allRecords.forEach(r => r.date = r.date || new Date().toISOString().split('T')[0]);
 
                 generateFilterOptions(allRecords);
-                updateStats();
+                updateStats(); // <--- 确保这里调用了，刷新数据和UI
                 updateHistory();
             } catch (error) {
                 console.error("加载记录失败:", error);
@@ -474,16 +486,11 @@
             }
         }
         
-        /**
-         * 记录或更新一条工时记录。
-         */
         async function recordWorkEntry(newRecord) {
             try {
-                // 查找是否已存在该日期的记录
                 const existing = allRecords.find(r => r.date === newRecord.date);
                 
                 let docRef;
-                // 如果存在，更新它；否则，新增一个文档
                 if (existing) {
                     docRef = getRecordsRef().doc(existing.id);
                     await docRef.set(newRecord, { merge: true });
@@ -493,9 +500,8 @@
                     alert(`记录 ${newRecord.date} 已成功新增！`);
                 }
 
-                // 更新完成后，重新加载和刷新界面
                 await loadAllWorkRecords(); 
-                saveDefaultOptions(); // 保存默认值到 localStorage
+                saveDefaultOptions();
                 
             } catch (error) {
                 console.error("记录工时失败:", error);
@@ -503,9 +509,6 @@
             }
         }
 
-        /**
-         * 删除一条工时记录。
-         */
         window.deleteRecord = async function(docId) {
             if (!confirm(`确定要删除此条记录吗？`)) {
                 return;
@@ -521,7 +524,7 @@
         }
 
         // =======================================================
-        // 6. 核心逻辑 (计算和记录) (保持不变)
+        // 6. 核心逻辑 (计算和记录)
         // =======================================================
         
         oneClickBtn.addEventListener('click', async function() {
@@ -536,27 +539,22 @@
             if (!auth.currentUser) { alert('请先登录！'); return; }
 
             const totalHours = calculateHourDiff(startTime, endTime);
-            // 核心工时 = (打卡总时长 - 休息时间)，向下取整到 0
             const coreWorkHours = Math.max(0, totalHours - restTime); 
 
-            // 自动计算加班
-            if (workType === '正常工作' || workType === '出差') {
-                // 自动计算超过标准工时部分
+            // 自动计算加班 (只对 "正常工作" 类型计算)
+            if (workType === '正常工作') {
                 const calculatedOvertime = Math.max(0, coreWorkHours - STANDARD_DAY_HOURS);
-                // 实际加班时间 = (手动输入的加班时间 + 自动计算的加班时间)
                 overtimeTime = parseFloat(overtimeTime) + calculatedOvertime; 
             }
 
             const actualOvertime = overtimeTime.toFixed(1);
-            // 实际工作小时 = 核心工时 + 实际加班时间
             const actualWorkHours = (coreWorkHours + parseFloat(actualOvertime)).toFixed(1); 
 
             const newRecord = {
                 date: workDate, startTime, endTime,
                 restTime: restTime.toFixed(1), overtimeTime: actualOvertime, 
-                coreWorkHours: coreWorkHours.toFixed(1), // 总打卡时长 (已扣除休息)
+                coreWorkHours: coreWorkHours.toFixed(1), 
                 actualWorkHours, workType,
-                // 添加时间戳便于排序 (虽然我们主要用 date 字段排序)
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             };
 
@@ -568,7 +566,6 @@
             const [sH, sM] = start.split(':').map(Number);
             const [eH, eM] = end.split(':').map(Number);
             let diffMin = (eH * 60 + eM) - (sH * 60 + sM);
-            // 跨天计算 (例如 23:00 到 01:00)
             if (diffMin < 0) {
                 diffMin += 24 * 60; 
             }
@@ -576,10 +573,9 @@
         }
 
         // =======================================================
-        // 7. 统计和历史显示 (保持不变)
+        // 7. 统计和历史显示
         // =======================================================
         
-        // 辅助函数：格式化日期，只显示月日
         function formatDate(isoDate, showYear = false) {
             const parts = isoDate.split('-');
             if (parts.length < 3) return isoDate;
@@ -613,7 +609,6 @@
                 filterMonthEl.appendChild(option);
             }
             
-            // 恢复/设置默认选中项 (默认选中当前年月)
             const today = new Date();
             const currentYear = today.getFullYear().toString();
             const currentMonth = (today.getMonth() + 1).toString().padStart(2, '0');
@@ -654,7 +649,6 @@
                 return yearMatch && monthMatch;
             });
 
-            // 更新标签文本 (时间范围)
             let timeScope = '所有记录';
             if (selectedYear !== 'all' && selectedMonth !== 'all') {
                 timeScope = `${selectedYear}年${parseInt(selectedMonth)}月`;
@@ -668,25 +662,20 @@
             document.getElementById('total-label').textContent = `${timeScope}总工时 (正常)`;
             document.getElementById('overtime-exchange-label').textContent = `${timeScope}加班兑换天数`; 
 
-            // 1. 计算筛选出的总工时 (正常部分，即不超过标准工时 9.5 小时的部分)
             const normalTotal = currentFilteredRecords.reduce((sum, r) => {
                 return sum + Math.min(parseFloat(r.coreWorkHours) || 0, STANDARD_DAY_HOURS); 
             }, 0).toFixed(1);
 
-            // 2. 计算筛选出的加班总时长
             const overtimeTotal = currentFilteredRecords.reduce((sum, r) => sum + (parseFloat(r.overtimeTime) || 0), 0).toFixed(1);
             
-            // 3. 计算工作天数 (去重日期)
             const workDays = new Set(currentFilteredRecords.map(r => r.date)).size;
 
-            // 4. 计算加班兑换天数
             const exchangeDays = (parseFloat(overtimeTotal) / STANDARD_DAY_HOURS).toFixed(2);
 
-            // 更新显示
             monthDaysEl.textContent = workDays + ' 天';
             monthTotalEl.textContent = normalTotal + ' 小时';
             monthOvertimeExchangeEl.textContent = exchangeDays + ' 天';
-            totalDaysEl.textContent = allRecords.length + ' 条记录'; // 总记录条数
+            totalDaysEl.textContent = allRecords.length + ' 条记录'; 
             
             showMonthDetails(currentFilteredRecords, timeScope);
         }
@@ -715,7 +704,6 @@
             monthDetailsBodyEl.innerHTML = '';
             sortedRecords.forEach(record => {
                 const coreHours = parseFloat(record.coreWorkHours) || 0;
-                // 正常工时 = 核心工时中不超过标准时长的部分
                 const normalHours = Math.min(coreHours, STANDARD_DAY_HOURS).toFixed(1); 
 
                 const row = document.createElement('tr');
@@ -753,6 +741,5 @@
             });
         }
     </script>
-    
-    </body>
+</body>
 </html>
