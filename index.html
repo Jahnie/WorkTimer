@@ -82,7 +82,6 @@
         }
         .month-details-card .close-btn:hover { color: #333; }
         .details-table-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
-
         /* 退出按钮样式 */
         #sign-out-button {
             position: absolute;
@@ -99,15 +98,15 @@
         <div class="header">
             <h1>每日工时一键记录（Firebase 安全同步）</h1>
         </div>
-
+        
         <div id="auth-container" class="card">
             <h3>🔐 用户认证（邮箱/密码登录）</h3>
-
+            
             <div class="form-group">
                 <label for="email-input">邮箱</label>
                 <input type="email" id="email-input" placeholder="请输入您的邮箱地址">
             </div>
-
+            
             <div class="form-group">
                 <label for="password-input">密码</label>
                 <input type="password" id="password-input" placeholder="请输入密码">
@@ -118,6 +117,7 @@
                 <button class="btn-primary" id="sign-in-button" style="margin-top: 10px;">登录</button>
             </div>
         </div>
+
         <div id="main-app-content" style="display:none;">
             <button class="btn-danger" id="sign-out-button">安全退出</button>
 
@@ -142,8 +142,8 @@
                     <div class="value" id="month-total">0.0 小时</div>
                 </div>
                 <div class="stat-item">
-                    <h3 id="overtime-exchange-label">...加班兑换天数</h3> 
-                    <div class="value overtime-value" id="month-overtime-exchange">0.0 天</div>
+                    <h3 id="overtime-hours-label">...加班总时长 (小时)</h3> 
+                    <div class="value overtime-value" id="month-overtime-hours">0.0 小时</div>
                 </div>
                 <div class="stat-item">
                     <h3>所有记录天数</h3>
@@ -237,8 +237,8 @@
                                 <th>核心工时</th>
                                 <th>实际工时</th>
                                 <th>类型</th>
-                                <th>操作</th> 
-                            </tr>
+                                <th>操作</th>
+                             </tr>
                         </thead>
                         <tbody id="month-details-body">
                             </tbody>
@@ -257,8 +257,8 @@
                                 <th>休息/加班（小时）</th>
                                 <th>实际工时（小时）</th>
                                 <th>类型</th>
-                                <th>操作</th> 
-                            </tr>
+                                <th>操作</th>
+                             </tr>
                         </thead>
                         <tbody id="history-body">
                             <tr><td colspan="6" class="empty">加载中... 请等待数据同步</td></tr>
@@ -268,11 +268,10 @@
             </div>
         </div>
     </div>
-
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-
+    
     <script>
         // =======================================================
         // 🚨 1. Firebase 配置 
@@ -294,30 +293,30 @@
         const db = firebase.firestore();
 
         // 常量
-        const STANDARD_DAY_HOURS = 9.5; 
+        const STANDARD_DAY_HOURS = 9.5;         
         const USER_DEFAULTS_KEY = 'workDataDefaults'; 
 
         // 元素引用
-        const workDateEl = document.getElementById('work-date');
-        const startTimeEl = document.getElementById('start-time');
-        const endTimeEl = document.getElementById('end-time');
-        const restTimeEl = document.getElementById('rest-time');
-        const overtimeTimeEl = document.getElementById('overtime-time');
-        const workTypeEl = document.getElementById('work-type');
-        const oneClickBtn = document.getElementById('one-click-record');
+        const workDateEl = document.getElementById('work-date');        
+        const startTimeEl = document.getElementById('start-time');        
+        const endTimeEl = document.getElementById('end-time');        
+        const restTimeEl = document.getElementById('rest-time');        
+        const overtimeTimeEl = document.getElementById('overtime-time');        
+        const workTypeEl = document.getElementById('work-type');        
+        const oneClickBtn = document.getElementById('one-click-record');        
         const historyBodyEl = document.getElementById('history-body');
 
-        const filterYearEl = document.getElementById('filter-year');
-        const filterMonthEl = document.getElementById('filter-month');
-        const totalDaysEl = document.getElementById('total-days');
-        
-        const monthDaysEl = document.getElementById('month-days');
+        const filterYearEl = document.getElementById('filter-year');        
+        const filterMonthEl = document.getElementById('filter-month');        
+        const totalDaysEl = document.getElementById('total-days');                
+        const monthDaysEl = document.getElementById('month-days');        
         const monthTotalEl = document.getElementById('month-total');
-        const monthOvertimeExchangeEl = document.getElementById('month-overtime-exchange');
         
-        const monthDetailsCardEl = document.getElementById('month-details-card'); 
-        const monthDetailsBodyEl = document.getElementById('month-details-body');
+        // ❗ 修改：引用新的 ID
+        const monthOvertimeHoursEl = document.getElementById('month-overtime-hours');                
         
+        const monthDetailsCardEl = document.getElementById('month-details-card');         
+        const monthDetailsBodyEl = document.getElementById('month-details-body');                
         // Email/Password 认证元素
         const authContainerEl = document.getElementById('auth-container');
         const mainAppContentEl = document.getElementById('main-app-content');
@@ -337,7 +336,7 @@
             generateTimeOptions(startTimeEl);
             generateTimeOptions(endTimeEl);
             restoreDefaultOptions();
-            generateFilterOptions(allRecords); 
+            generateFilterOptions(allRecords);         
         };
 
         function generateTimeOptions(selectEl) {
@@ -412,10 +411,10 @@
             const email = emailInputEl.value.trim();
             const password = passwordInputEl.value.trim();
             if (!email || !password || password.length < 6) { 
-                alert('请输入有效的邮箱和至少6位密码！'); 
-                return; 
-            }
-            
+                 alert('请输入有效的邮箱和至少6位密码！'); 
+                 return; 
+             }
+                        
             signUpButton.disabled = true;
             signUpButton.textContent = '注册中...';
 
@@ -438,10 +437,10 @@
             const email = emailInputEl.value.trim();
             const password = passwordInputEl.value.trim();
             if (!email || !password) { 
-                alert('请输入邮箱和密码！'); 
-                return; 
-            }
-            
+                 alert('请输入邮箱和密码！'); 
+                 return; 
+             }
+                        
             signInButton.disabled = true;
             signInButton.textContent = '登录中...';
 
@@ -462,7 +461,7 @@
         // =======================================================
         // 5. Firestore 数据操作
         // =======================================================
-        
+                
         function getRecordsRef() {
             const user = auth.currentUser;
             if (!user) { throw new Error("用户未登录，无法访问数据。"); }
@@ -473,7 +472,7 @@
             try {
                 const snapshot = await getRecordsRef().orderBy('date', 'desc').get(); 
                 allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
+                                
                 allRecords.forEach(r => r.date = r.date || new Date().toISOString().split('T')[0]);
 
                 generateFilterOptions(allRecords);
@@ -485,11 +484,11 @@
                 historyBodyEl.innerHTML = '<tr><td colspan="6" class="empty">数据加载失败</td></tr>';
             }
         }
-        
+                
         async function recordWorkEntry(newRecord) {
             try {
                 const existing = allRecords.find(r => r.date === newRecord.date);
-                
+                                
                 let docRef;
                 if (existing) {
                     docRef = getRecordsRef().doc(existing.id);
@@ -501,8 +500,7 @@
                 }
 
                 await loadAllWorkRecords(); 
-                saveDefaultOptions();
-                
+                saveDefaultOptions();                            
             } catch (error) {
                 console.error("记录工时失败:", error);
                 alert("记录工时失败，请重试。");
@@ -526,7 +524,7 @@
         // =======================================================
         // 6. 核心逻辑 (计算和记录)
         // =======================================================
-        
+                
         oneClickBtn.addEventListener('click', async function() {
             const workDate = workDateEl.value;
             const startTime = startTimeEl.value;
@@ -569,13 +567,13 @@
             if (diffMin < 0) {
                 diffMin += 24 * 60; 
             }
-            return diffMin/60; 
+            return diffMin/60;         
         }
 
         // =======================================================
         // 7. 统计和历史显示
         // =======================================================
-        
+                
         function formatDate(isoDate, showYear = false) {
             const parts = isoDate.split('-');
             if (parts.length < 3) return isoDate;
@@ -586,9 +584,9 @@
         function generateFilterOptions(records) {
             const years = new Set();
             records.forEach(r => years.add(r.date.substring(0, 4)));
-            
+                        
             const sortedYears = Array.from(years).sort((a, b) => b - a);
-            
+                        
             const currentSelectedYear = filterYearEl.value;
             const currentSelectedMonth = filterMonthEl.value;
 
@@ -608,7 +606,7 @@
                 option.textContent = i + ' 月';
                 filterMonthEl.appendChild(option);
             }
-            
+                        
             const today = new Date();
             const currentYear = today.getFullYear().toString();
             const currentMonth = (today.getMonth() + 1).toString().padStart(2, '0');
@@ -617,35 +615,34 @@
                 filterYearEl.value = currentSelectedYear;
             } else if (sortedYears.includes(currentYear)) {
                 filterYearEl.value = currentYear;
-            } else if (sortedYears.length > 0) {
+            } else if (sortedYears.length > 0) { 
                  filterYearEl.value = sortedYears[0]; 
-            } else {
+             } else { 
                  filterYearEl.value = 'all';
             }
-            
+                        
             if (currentSelectedMonth && currentSelectedMonth !== 'all') {
                 filterMonthEl.value = currentSelectedMonth;
             } else {
                 filterMonthEl.value = currentMonth;
             }
         }
-        
+                
         filterYearEl.addEventListener('change', updateStats);
         filterMonthEl.addEventListener('change', updateStats);
-
 
         function updateStats() {
             const selectedYear = filterYearEl.value;
             const selectedMonth = filterMonthEl.value;
-            
+                        
             const currentFilteredRecords = allRecords.filter(r => {
                 const datePart = r.date.split('-');
                 const recordYear = datePart[0];
                 const recordMonth = datePart[1];
-                
+                                
                 const yearMatch = selectedYear === 'all' || recordYear === selectedYear;
                 const monthMatch = selectedMonth === 'all' || recordMonth === selectedMonth;
-                
+                                
                 return yearMatch && monthMatch;
             });
 
@@ -657,26 +654,32 @@
             } else if (selectedMonth !== 'all') {
                 timeScope = `${parseInt(selectedMonth)}月`;
             }
-            
+                        
             document.getElementById('total-days-label').textContent = `${timeScope}工作天数`;
             document.getElementById('total-label').textContent = `${timeScope}总工时 (正常)`;
-            document.getElementById('overtime-exchange-label').textContent = `${timeScope}加班兑换天数`; 
+            
+            // ❗ 修改：更新标签文本
+            document.getElementById('overtime-hours-label').textContent = `${timeScope}加班总时长 (小时)`; 
 
             const normalTotal = currentFilteredRecords.reduce((sum, r) => {
                 return sum + Math.min(parseFloat(r.coreWorkHours) || 0, STANDARD_DAY_HOURS); 
             }, 0).toFixed(1);
 
+            // 累加加班时长
             const overtimeTotal = currentFilteredRecords.reduce((sum, r) => sum + (parseFloat(r.overtimeTime) || 0), 0).toFixed(1);
-            
+                        
             const workDays = new Set(currentFilteredRecords.map(r => r.date)).size;
 
-            const exchangeDays = (parseFloat(overtimeTotal) / STANDARD_DAY_HOURS).toFixed(2);
-
+            // ❗ 移除兑换天数的计算，但可以保留一个注释变量如果需要
+            // const exchangeDays = (parseFloat(overtimeTotal) / STANDARD_DAY_HOURS).toFixed(2);
+            
             monthDaysEl.textContent = workDays + ' 天';
             monthTotalEl.textContent = normalTotal + ' 小时';
-            monthOvertimeExchangeEl.textContent = exchangeDays + ' 天';
-            totalDaysEl.textContent = allRecords.length + ' 条记录'; 
             
+            // ❗ 修改：显示加班总时长
+            monthOvertimeHoursEl.textContent = overtimeTotal + ' 小时';
+
+            totalDaysEl.textContent = allRecords.length + ' 条记录';                         
             showMonthDetails(currentFilteredRecords, timeScope);
         }
 
@@ -692,7 +695,7 @@
 
             monthDetailsCardEl.style.display = 'block';
             document.getElementById('month-details-title').querySelector('span').textContent = `${title}详细记录`;
-            
+                        
             // 按照日期升序排序 (从旧到新)
             const sortedRecords = records.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -728,7 +731,7 @@
             historyBodyEl.innerHTML = '';
             // 显示最新的 10 条记录
             allRecords.slice(0,10).forEach(record => { 
-                const row = document.createElement('tr');
+                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${formatDate(record.date)}</td>
                     <td>${record.startTime} - ${record.endTime}</td>
